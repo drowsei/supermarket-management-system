@@ -1,31 +1,88 @@
 # Supermarket Management System
 
-A production-oriented, multi-branch supermarket management system being built in
-deliberate phases. Phase 3 adds the reusable authentication and authorization
-foundation to the approved 54-table database and the Phase 2 Express/MySQL
-foundation.
+A production-oriented, multi-branch supermarket management system built in
+reviewed phases. Phase 4 adds the secured Organization and Access
+Administration API on top of the approved 54-table database, the Express/MySQL
+foundation, and the Phase 3 authentication and authorization system.
 
-The current API supports health checks, staff login, current-account inspection,
-and authenticated password changes. It also supplies permission, branch-scope,
-and forced-password-change middleware for later business routes. Product,
-inventory, purchasing, POS, sales, reports, frontend pages, and Postman
-collections are intentionally outside this phase.
+The current API can operate branches, employees, employee branch assignments,
+internal user accounts, roles, application permissions, and global or
+branch-scoped user-role grants. It also retains the Phase 2 health endpoints and
+Phase 3 login, current-account, password-change, JWT, bcrypt, and database-current
+permission behavior.
 
-Detailed database design remains in [database/README.md](database/README.md).
+Phase 4 does **not** redesign the database. The approved
+[`database/schema.sql`](database/schema.sql) and detailed
+[`database/README.md`](database/README.md) remain the authority for the existing
+54 tables.
+
+## Phase 4 purpose and boundaries
+
+Organization and access administration comes before catalog and transaction
+features because every later product, inventory, purchase, POS, sale, and report
+must operate in a valid branch and must have an identifiable, authorized staff
+actor. Phase 4 supplies that foundation without starting those business domains.
+
+Included now:
+
+- branch administration without physical deletion;
+- employee administration, assignment history, and termination workflow;
+- controlled internal account provisioning and administrative password resets;
+- role administration and a read-only application permission catalog;
+- global and branch-scoped role grants;
+- transaction-bound audit events for successful administrative changes;
+- an idempotent access-control seed and secure one-time administrator bootstrap;
+- bounded pagination, search, and relevant filters; and
+- MySQL-backed HTTP integration testing while preserving Phase 2 and 3 behavior.
+
+Still intentionally excluded are products, categories, brands, units, variants,
+packages, barcodes, prices, suppliers, customers, inventory, lots, purchasing,
+receiving, transfers, stock counts, POS, till sessions, sales, returns, payments,
+reports, dashboard, frontend, Postman, deployment, public registration, refresh
+tokens, MFA, password-reset email, and OAuth.
 
 ## Technology stack
 
 - Node.js 20+ with ES Modules
 - Express 5 REST API
-- MySQL with `mysql2/promise`
+- MySQL 8.0.16+ through `mysql2/promise`
 - bcrypt password hashing
-- short-lived JSON Web Tokens (JWT)
+- short-lived HS256 JSON Web Tokens
+- database-backed, permission-code authorization
 - Helmet security headers
-- endpoint-specific login rate limiting
+- login-specific rate limiting
 - `dotenv` environment configuration
 - CORS middleware
 - nodemon for local development
 - Node's built-in test runner for integration tests
+
+No ORM is used. Repository SQL is explicit and parameterized.
+
+## Architecture
+
+HTTP administration requests follow the same layered path as authentication:
+
+```text
+route
+  -> authentication / password-state / permission middleware
+  -> controller
+  -> service
+  -> repository
+  -> MySQL
+```
+
+- Routes define URLs and their required application permission.
+- Middleware verifies the JWT, reloads the current user, enforces a completed
+  required password change, and checks the current global database permission.
+- Controllers validate HTTP parameters and bodies and shape responses.
+- Services apply workflows and translate expected conflicts into safe HTTP
+  errors.
+- Repositories own parameterized SQL, row locking, transactions, and audit
+  inserts.
+
+All `/api/admin` routes pass through `authenticate` and
+`requirePasswordChangeCompleted` before their endpoint-specific
+`requirePermission(...)` check. A role name never bypasses authorization.
 
 ## Project structure
 
@@ -34,33 +91,69 @@ supermarket-management-system/
 ├── database/
 │   ├── README.md
 │   └── schema.sql
+├── scripts/
+│   ├── lib/
+│   │   └── cli-runtime.js
+│   ├── bootstrap-admin.js
+│   └── seed-access-control.js
 ├── src/
 │   ├── config/
+│   │   ├── accessControl.js
 │   │   └── database.js
 │   ├── controllers/
-│   │   └── auth.controller.js
+│   │   ├── auth.controller.js
+│   │   ├── branch.controller.js
+│   │   ├── employee.controller.js
+│   │   ├── role.controller.js
+│   │   └── userAdmin.controller.js
 │   ├── middleware/
 │   │   ├── auth.middleware.js
 │   │   ├── authorization.middleware.js
 │   │   ├── errorHandler.js
 │   │   └── loginRateLimiter.js
 │   ├── repositories/
-│   │   └── auth.repository.js
+│   │   ├── accessControlSeed.repository.js
+│   │   ├── audit.repository.js
+│   │   ├── auth.repository.js
+│   │   ├── branch.repository.js
+│   │   ├── employee.repository.js
+│   │   ├── role.repository.js
+│   │   └── userAdmin.repository.js
 │   ├── routes/
+│   │   ├── admin/
+│   │   │   ├── branch.routes.js
+│   │   │   ├── employee.routes.js
+│   │   │   ├── index.js
+│   │   │   ├── role.routes.js
+│   │   │   └── user.routes.js
 │   │   ├── auth.routes.js
 │   │   └── health.routes.js
 │   ├── services/
 │   │   ├── auth.service.js
-│   │   └── authorization.service.js
+│   │   ├── authorization.service.js
+│   │   ├── branch.service.js
+│   │   ├── employee.service.js
+│   │   ├── role.service.js
+│   │   └── userAdmin.service.js
 │   ├── utils/
+│   │   ├── auditContext.js
+│   │   ├── databaseError.js
 │   │   ├── httpError.js
 │   │   ├── jwt.js
-│   │   └── password.js
+│   │   ├── password.js
+│   │   └── record.js
 │   ├── validators/
+│   │   ├── admin/
+│   │   │   ├── branch.validator.js
+│   │   │   ├── common.validator.js
+│   │   │   ├── employee.validator.js
+│   │   │   ├── role.validator.js
+│   │   │   └── user.validator.js
 │   │   └── auth.validator.js
 │   ├── app.js
 │   └── server.js
 ├── test/
+│   ├── admin.integration.test.js
 │   └── auth.integration.test.js
 ├── .env
 ├── .env.example
@@ -70,385 +163,591 @@ supermarket-management-system/
 └── README.md
 ```
 
-The authentication request path is deliberately separated:
+`admin.integration.test.js` exercises the Phase 4 HTTP API against MySQL;
+`auth.integration.test.js` retains the detailed Phase 2 and Phase 3 regression
+coverage. The test runner executes them serially so their isolated database
+fixtures and connection pools cannot interfere with one another.
 
-```text
-route -> middleware -> controller -> service -> repository -> MySQL
-```
+## Prerequisites and configuration
 
-Routes define URLs, controllers translate HTTP input and output, services apply
-security and workflow rules, and repositories own parameterized SQL. This keeps
-database concerns out of HTTP handlers and makes each layer easier to test.
+Install:
 
-## Prerequisites
+- Node.js 20 or newer;
+- npm;
+- MySQL 8.0.16 or newer;
+- the existing `supermarket_management` database; and
+- a dedicated `supermarket_app` MySQL account with the API's required privileges.
 
-- Node.js 20 or newer
-- npm
-- MySQL 8.0.16 or newer
-- The existing `supermarket_management` database created from
-  `database/schema.sql`
-- The dedicated MySQL application account `supermarket_app`, with the privileges
-  required by the API and tests
-
-MySQL `root` is an administrative account; it should not run the Node.js
-application. Keep real local credentials in `.env`, which is Git-ignored. The
+MySQL `root` is an administrative account and should not run the Node.js
+application. Real local credentials belong in `.env`, which is Git-ignored. The
 tracked `.env.example` contains placeholders only.
 
-## Install and configure
-
-Install exactly the versions recorded in the lockfile:
+Install the locked dependencies:
 
 ```bash
 npm ci
 ```
 
-For normal dependency installation while developing, use:
-
-```bash
-npm install
-```
-
-If `.env` does not already exist, copy the safe template and edit the new local
-file:
+Create local configuration when necessary:
 
 ```bash
 cp .env.example .env
 ```
 
-Generate a strong JWT secret locally, then save its output as `JWT_SECRET` in
-`.env`. Do not paste the output into source code, documentation, Git, logs, or
-chat:
+Required configuration:
+
+```dotenv
+NODE_ENV=development
+PORT=5000
+
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=supermarket_app
+DB_PASSWORD=replace_with_your_mysql_password
+DB_NAME=supermarket_management
+DB_CONNECTION_LIMIT=10
+
+JWT_SECRET=replace_with_a_private_random_secret_of_at_least_48_characters
+JWT_EXPIRES_IN=15m
+JWT_ISSUER=supermarket-management-system
+JWT_AUDIENCE=supermarket-api
+BCRYPT_ROUNDS=12
+```
+
+Generate a real JWT secret locally and save it only in `.env`:
 
 ```bash
 openssl rand -base64 48
 ```
 
-### Environment variables
-
-| Variable | Required | Purpose | Safe example |
-| --- | --- | --- | --- |
-| `NODE_ENV` | yes | Runtime mode | `development` |
-| `PORT` | yes | HTTP listening port | `5000` |
-| `DB_HOST` | yes | MySQL host | `localhost` |
-| `DB_PORT` | yes | MySQL port | `3306` |
-| `DB_USER` | yes | Dedicated application account | `supermarket_app` |
-| `DB_PASSWORD` | yes | Local MySQL password | `replace_with_your_mysql_password` |
-| `DB_NAME` | yes | Existing database | `supermarket_management` |
-| `DB_CONNECTION_LIMIT` | no | Maximum pooled connections | `10` |
-| `JWT_SECRET` | yes | Private JWT signing key | `replace_with_a_private_random_secret_of_at_least_48_characters` |
-| `JWT_EXPIRES_IN` | yes | Access-token lifetime | `15m` |
-| `JWT_ISSUER` | yes | Expected token issuer | `supermarket-management-system` |
-| `JWT_AUDIENCE` | yes | Expected token audience | `supermarket-api` |
-| `BCRYPT_ROUNDS` | yes | bcrypt work factor | `12` |
-
-Startup validates the database and authentication configuration. It requires a
-JWT secret of at least 48 UTF-8 bytes and rejects the tracked placeholder, limits
-`JWT_EXPIRES_IN` to an explicitly unit-suffixed value from 60 seconds through one
-hour, and accepts bcrypt costs from 10 through 14. No secret value is printed.
-The server opens its HTTP port only after a real read-only MySQL connection test
-succeeds.
-
-## Packages and their responsibilities
-
-- `express` supplies routing and the HTTP middleware pipeline.
-- `mysql2` supplies Promise-based, parameterized MySQL queries and pooling.
-- `dotenv` loads local environment configuration before application imports.
-- `cors` supplies development-time cross-origin response policy.
-- `bcrypt` hashes and verifies passwords using a configurable work factor.
-- `jsonwebtoken` signs and verifies short-lived HS256 access tokens.
-- `express-rate-limit` throttles repeated login attempts.
-- `helmet` adds safe default HTTP security headers.
-- `nodemon` is the only development dependency; it restarts the server after
-  source changes. Runtime packages are under `dependencies` because the deployed
-  application needs them; nodemon is under `devDependencies` because production
-  does not.
+Startup validates the configuration, makes a read-only database connection test,
+confirms the active database name, and only then opens the HTTP port. It never
+prints a database password or JWT secret.
 
 ## Commands
 
 ```bash
-# Development server with automatic restart
+# Start with automatic source reload
 npm run dev
 
-# Normal server
+# Start normally
 npm start
 
-# Automated Phase 2 regression and Phase 3 integration tests
+# Seed/reconcile canonical Phase 4 access configuration
+npm run seed:access
+
+# Secure interactive initial-administrator bootstrap
+npm run bootstrap:admin
+
+# Run the integration suite
 npm test
 ```
 
-A successful startup reports the connected database and port, but never logs a
-database password or JWT secret:
+The seed and bootstrap tools are explicit operator commands. Neither runs on
+every server startup.
+
+## Access-control catalog
+
+Permissions are application-defined capabilities. A permission code is useful
+only because application routes check that exact code, so administrators cannot
+invent permission definitions through the HTTP API.
+
+The idempotent catalog contains these ten Phase 4 permissions:
+
+| Permission code | Meaning |
+| --- | --- |
+| `branches.read` | View branch lists and details |
+| `branches.manage` | Create and update branches |
+| `employees.read` | View employees and assignment history |
+| `employees.manage` | Create/update/terminate employees and manage assignments |
+| `users.read` | View internal accounts and grants |
+| `users.manage` | Provision/update accounts and reset passwords |
+| `roles.read` | View roles and their permissions |
+| `roles.manage` | Create/update roles and replace permission sets |
+| `permissions.read` | View the read-only permission catalog |
+| `user_roles.manage` | Assign and revoke scoped user-role grants |
+
+The seed inserts missing canonical permissions, reconciles their human-readable
+metadata, preserves unrelated permissions and roles, ensures the
+`SYSTEM_ADMIN` / `System Administrator` role exists, and grants it every
+canonical Phase 4 permission. Re-running the command produces the same logical
+configuration and does not duplicate rows.
+
+If `SYSTEM_ADMIN` already exists but is inactive, the seed deliberately leaves
+it inactive and prints a warning instead of silently reversing an emergency or
+operator-initiated disable. Bootstrap also refuses to attach a new privileged
+account to that inactive role; an authorized operator must review and reactivate
+the role deliberately.
+
+`SYSTEM_ADMIN` is a normal database role. Its authority comes only from
+`user_roles -> roles -> role_permissions -> permissions`; there is no
+`if (role === 'ADMIN')` or superuser bypass. To prevent an accidental lockout,
+the administration API protects its canonical code and name, prevents its
+deactivation, and refuses a permission replacement that omits any canonical
+Phase 4 permission. It may still hold additional future application permissions.
+
+## Initial administrator bootstrap
+
+Run the seed first, then start the one-time interactive flow:
+
+```bash
+npm run seed:access
+npm run bootstrap:admin
+```
+
+The bootstrap tool:
+
+- requires an interactive terminal;
+- prompts visibly for username and email;
+- reads and confirms the password without echoing it;
+- applies the same 10-character and 72-UTF-8-byte password boundaries as the
+  application;
+- hashes the password with bcrypt before storage;
+- creates an active user with `employee_id = NULL` and
+  `must_change_password = false`;
+- assigns `SYSTEM_ADMIN` globally with `user_roles.branch_id = NULL` in the same
+  transaction; and
+- never prints the password or bcrypt hash.
+
+There is no HTTP registration route and no hard-coded/default administrator
+credential. If an active global `SYSTEM_ADMIN` already exists, bootstrap refuses
+to silently create another and directs the operator to normal user
+administration. The non-echoed password chosen by the bootstrap operator is the
+account's initial final password, not an administrator-issued temporary secret;
+that is why bootstrap does not force an immediate replacement. In contrast,
+passwords provisioned or reset through the HTTP administration API always set
+`must_change_password = true`.
+
+## API conventions
+
+Send a Phase 3 access token on every administrative request:
+
+```http
+Authorization: Bearer ACCESS_TOKEN
+Content-Type: application/json
+```
+
+MySQL primary keys use `BIGINT UNSIGNED`. IDs are accepted and returned as JSON
+strings so values beyond JavaScript's safe integer range are never rounded.
+Bodies reject unknown fields, and dynamic SQL identifiers are never taken from
+request input.
+
+### Pagination
+
+Every list endpoint uses bounded pagination:
 
 ```text
-Database connection successful.
-Connected database: supermarket_management
-Server running on port 5000
+?page=1&limit=20
 ```
 
-On `SIGINT` or `SIGTERM`, graceful shutdown first stops accepting HTTP requests,
-then closes the HTTP server and MySQL pool.
+- default page: `1`;
+- default limit: `20`;
+- maximum limit: `100`; and
+- page and limit must be positive integers.
 
-## API endpoints
-
-### Health checks
-
-| Method and path | Authentication | Purpose | Success |
-| --- | --- | --- | --- |
-| `GET /api/health` | none | Confirms Express is responding | `200` |
-| `GET /api/health/database` | none | Executes a lightweight query through the shared pool | `200` |
-| any unknown route | as applicable | Consistent JSON not-found response | `404` |
-
-The database health endpoint returns `503` if its live MySQL query fails and does
-not disclose connection details.
-
-### Login
-
-`POST /api/auth/login` is public but rate-limited.
-
-```json
-{
-  "identifier": "username-or-email",
-  "password": "user-password"
-}
-```
-
-On success (`200`):
+Successful list shape:
 
 ```json
 {
   "success": true,
   "data": {
-    "accessToken": "<access-token>",
-    "tokenType": "Bearer",
-    "expiresIn": "15m",
-    "user": {
-      "userId": "123",
-      "username": "cashier.one",
-      "email": "cashier@example.com",
-      "employeeId": "456",
-      "mustChangePassword": false
+    "items": [],
+    "pagination": {
+      "page": 1,
+      "limit": 20,
+      "totalItems": 0,
+      "totalPages": 0
     }
   }
 }
 ```
 
-IDs are JSON strings because MySQL `BIGINT UNSIGNED` values can exceed
-JavaScript's safe integer range. A missing field returns `400`. A nonexistent
-identifier, incorrect password, ambiguous identifier, or inactive account all
-use the same generic `401` response so the endpoint does not confirm which
-accounts exist. The single-process limiter allows 10 attempts per client IP in a
-15-minute window; further attempts return a clean `429` response.
+Supported filters:
 
-### Current account
+| List | Filters |
+| --- | --- |
+| branches | `status`, `search` |
+| employees | `employmentStatus`, `branchId`, `search` |
+| users | `isActive`, `employeeId`, `search` |
+| roles | `isActive`, `search` |
+| permissions | `search` |
 
-`GET /api/auth/me` requires a valid Bearer token:
+Ordering is code-controlled and includes stable ID tie-breakers. Search and
+filters use parameterized values rather than client-supplied SQL fragments.
 
-```bash
-curl -i \
-  -H "Authorization: Bearer ACCESS_TOKEN" \
-  http://localhost:5000/api/auth/me
-```
+### Status codes
 
-On success (`200`), the endpoint returns safe account fields plus current global
-and branch-scoped role and permission grants:
+| Status | Meaning |
+| --- | --- |
+| `200` | Successful read or update/workflow action |
+| `201` | Resource or association created |
+| `400` | Invalid shape, field, ID, enum, date, password, or pagination input |
+| `401` | Missing or invalid authentication/current account |
+| `403` | Authenticated but password change or permission requirement is unmet |
+| `404` | Requested branch, employee, assignment, user, role, permission, or grant does not exist |
+| `409` | Uniqueness, lifecycle, self-lockout, scope, or concurrent-state conflict |
+| `429` | Login rate limit exceeded |
+| `500` | Unexpected internal failure |
+| `503` | Live database unavailable or serialized credential administration is temporarily busy |
+
+Responses never expose SQL, constraint names, stack traces, JWT internals,
+passwords, or password hashes.
+
+## Existing health and authentication endpoints
+
+| Method and path | Access | Purpose |
+| --- | --- | --- |
+| `GET /api/health` | public | Confirms Express is responding |
+| `GET /api/health/database` | public | Runs a lightweight query through the shared pool |
+| `POST /api/auth/login` | public, rate-limited | Login by username or email |
+| `GET /api/auth/me` | authenticated | Safe current user plus current scoped grants |
+| `POST /api/auth/change-password` | authenticated | Verify and replace the current user's password |
+
+Login returns a short-lived JWT containing only the user ID in `sub` plus
+standard issue/expiry/issuer/audience claims. Every protected request verifies
+HS256, issuer, audience, expiry, and then reloads the current active user from
+MySQL. Permissions remain database-current instead of being trusted from JWT
+claims.
+
+## Phase 4 endpoints and required permissions
+
+These are the exact 25 Phase 4 endpoints. Every row also requires authentication
+and a completed required password change. Permission checks are **global**:
+a branch-scoped grant does not satisfy an administration endpoint.
+
+| # | Method and path | Required permission | Purpose |
+| ---: | --- | --- | --- |
+| 1 | `GET /api/admin/branches` | `branches.read` | Paginated branch list |
+| 2 | `GET /api/admin/branches/:branchId` | `branches.read` | Branch detail |
+| 3 | `POST /api/admin/branches` | `branches.manage` | Create a branch |
+| 4 | `PATCH /api/admin/branches/:branchId` | `branches.manage` | Update/deactivate/close a branch |
+| 5 | `GET /api/admin/employees` | `employees.read` | Paginated employee list |
+| 6 | `GET /api/admin/employees/:employeeId` | `employees.read` | Employee plus assignment history |
+| 7 | `POST /api/admin/employees` | `employees.manage` | Create an employee |
+| 8 | `PATCH /api/admin/employees/:employeeId` | `employees.manage` | Update a non-terminated employee |
+| 9 | `POST /api/admin/employees/:employeeId/terminate` | `employees.manage` | Atomic termination workflow |
+| 10 | `POST /api/admin/employees/:employeeId/assignments` | `employees.manage` | Create a branch assignment |
+| 11 | `POST /api/admin/employees/:employeeId/assignments/:assignmentId/end` | `employees.manage` | End an assignment without deleting history |
+| 12 | `POST /api/admin/employees/:employeeId/assignments/:assignmentId/make-primary` | `employees.manage` | Atomically switch the primary assignment |
+| 13 | `GET /api/admin/users` | `users.read` | Paginated safe-account list |
+| 14 | `GET /api/admin/users/:userId` | `users.read` | Safe account and role-grant detail |
+| 15 | `POST /api/admin/users` | `users.manage` | Provision an internal account |
+| 16 | `PATCH /api/admin/users/:userId` | `users.manage` | Update safe account fields/state |
+| 17 | `POST /api/admin/users/:userId/reset-password` | `users.manage` | Set a bcrypt temporary password |
+| 18 | `POST /api/admin/users/:userId/roles` | `user_roles.manage` | Create a global or branch role grant |
+| 19 | `DELETE /api/admin/users/:userId/roles/:userRoleId` | `user_roles.manage` | Revoke only the association |
+| 20 | `GET /api/admin/roles` | `roles.read` | Paginated role list |
+| 21 | `GET /api/admin/roles/:roleId` | `roles.read` | Role with permission information |
+| 22 | `POST /api/admin/roles` | `roles.manage` | Create a role |
+| 23 | `PATCH /api/admin/roles/:roleId` | `roles.manage` | Update/deactivate a role |
+| 24 | `PUT /api/admin/roles/:roleId/permissions` | `roles.manage` | Atomically replace a role's permission set |
+| 25 | `GET /api/admin/permissions` | `permissions.read` | Read-only application permission catalog |
+
+There are no branch, employee, user, role, or permission master-data DELETE
+routes. The only DELETE endpoint removes a `user_roles` association.
+
+## Branch administration
+
+Branch requests follow the exact schema fields: `branchCode`, `branchName`,
+`phone`, `email`, `addressLine1`, `addressLine2`, `city`, `stateRegion`,
+`postalCode`, `countryCode`, `currencyCode`, `timezone`, `openedOn`, and `status`.
+Codes are normalized appropriately; display names and addresses retain their
+meaningful casing.
+
+Allowed statuses are `ACTIVE`, `INACTIVE`, and `CLOSED`. Deactivation or closure
+preserves the branch row and all historical foreign-key relationships. Duplicate
+branch codes return `409` instead of leaking a MySQL duplicate-key error.
+
+Example creation:
 
 ```json
 {
-  "success": true,
-  "data": {
-    "user": {
-      "userId": "123",
-      "employeeId": "456",
-      "username": "cashier.one",
-      "email": "cashier@example.com",
-      "isActive": true,
-      "mustChangePassword": false,
-      "lastLoginAt": "2026-09-05T12:00:00.000Z"
-    },
-    "authorization": {
-      "globalRoles": [
-        { "roleCode": "STAFF", "roleName": "Staff" }
-      ],
-      "branchRoles": [
-        {
-          "branchId": "7",
-          "roleCode": "CASHIER",
-          "roleName": "Cashier"
-        }
-      ],
-      "permissions": {
-        "global": ["account.view_self"],
-        "byBranch": { "7": ["sale.create"] }
-      }
-    }
-  }
+  "branchCode": "GRA-01",
+  "branchName": "GRA Branch",
+  "phone": "+2348000000000",
+  "email": "gra@example.com",
+  "addressLine1": "1 Example Road",
+  "addressLine2": null,
+  "city": "Lagos",
+  "stateRegion": "Lagos",
+  "postalCode": "100001",
+  "countryCode": "NG",
+  "currencyCode": "NGN",
+  "timezone": "Africa/Lagos",
+  "openedOn": "2026-09-06",
+  "status": "ACTIVE"
 }
 ```
 
-The role and permission codes above only illustrate the response shape; the
-endpoint returns grants that actually exist in the database. It never returns a
-password hash, JWT secret, token, or database credentials. Missing, malformed,
-invalid, expired, wrongly issued, or wrongly targeted tokens return the same safe
-`401` authentication response. The endpoint remains available while
-`mustChangePassword` is true so a client can discover the restriction.
+## Employee and assignment administration
 
-### Change password
+An employee is the staff/personnel record. It can exist without a login. Employee
+fields are `employeeNumber`, `firstName`, `lastName`, `email`, `phone`,
+`hireDate`, `terminationDate`, and `employmentStatus`. Allowed normal states are
+`ACTIVE` and `ON_LEAVE`; `TERMINATED` is reached only through the dedicated
+workflow.
 
-`POST /api/auth/change-password` requires a valid Bearer token.
+Generic PATCH cannot set `terminationDate` or directly set `TERMINATED`. The
+termination endpoint accepts:
 
 ```json
 {
-  "currentPassword": "current-user-password",
-  "newPassword": "new-user-password"
+  "terminationDate": "2026-09-06"
 }
 ```
 
-The new password must contain at least 10 characters, must fit bcrypt's supported
-72 UTF-8-byte input boundary, and cannot be exactly the current password. The
-service verifies the current password, creates a fresh bcrypt hash, updates the
-account, clears `must_change_password`, and records a password-change audit entry
-without including either password or any token. Password fields are deliberately
-not trimmed or normalized.
+In one transaction it locks and reloads the employee, validates the date, sets
+the terminal state, ends applicable open assignments, clears primary flags,
+deactivates the optional linked user, writes audit events, and commits. Repeating
+the same completed request is safe; a conflicting termination date returns
+`409`. No employee row is deleted.
 
-Success returns `200` with:
+Assignment creation accepts:
 
 ```json
 {
-  "success": true,
-  "message": "Password changed successfully"
+  "branchId": "7",
+  "jobTitle": "Cashier",
+  "startedOn": "2026-09-06",
+  "isPrimary": true
 }
 ```
 
-Other expected statuses are `400` for invalid new-password data, `401` for
-missing/invalid authentication or an incorrect current password, and `409` if a
-concurrent password update makes the checked credentials stale. `500` is
-reserved for an unexpected internal failure. The update and audit insert use a
-transaction so they succeed or roll back together.
+The employee must exist and not be terminated, the branch must be appropriate,
+the start cannot predate hire, and overlapping duplicate branch assignments are
+rejected. When a new assignment becomes primary, the employee row and relevant
+assignments are locked, the previous open primary is cleared, and the selected
+assignment is set atomically. An ended or not-yet-started assignment cannot be
+made primary.
 
-There is deliberately no public `/register` or `/signup` route. Staff accounts
-will be provisioned later through an authorized administrative workflow.
+Assignment `started_on` and `ended_on` are inclusive `DATE` values. An assignment
+ended on `2026-09-06` is valid through that business date; it is no longer current
+on `2026-09-07`. This matches Phase 3's current-assignment query and should not be
+mistaken for timestamp-level immediate revocation. Termination still disables
+the linked user immediately because account and employee state are changed in
+the same workflow.
 
-## Authentication design
+## User provisioning and password reset
 
-The login service finds the username or email with parameterized SQL and verifies
-the stored bcrypt hash. On success it conditionally updates `last_login_at` and
-signs a short-lived access token.
+A user is a login/security principal, not an employee record. A normal staff
+account links to one non-terminated employee. The schema allows a deliberately
+unlinked system account with `employeeId: null`, which is how the initial
+bootstrap principal is represented.
 
-The token contains the user ID as the standard `sub` claim and only JWT timing,
-issuer, and audience metadata. It does not contain password hashes, employee
-details, roles, or permission lists. Tokens are signed and verified explicitly
-with HS256, the configured issuer and audience, and an expiration time.
+Internal provisioning example:
 
-Every protected request verifies the Bearer token and then reloads the current
-user from MySQL. A deleted, missing, or inactive account is rejected even if its
-token signature is valid. The middleware attaches only a safe current-user
-object to the request for downstream handlers.
-
-## Authorization design
-
-Authentication proves which current account made a request; authorization asks
-what that account may do. Authorization follows the existing normalized chain:
-
-```text
-users
-  -> user_roles (global or branch scope)
-  -> active roles
-  -> role_permissions
-  -> permissions (checked by permission_code)
+```json
+{
+  "employeeId": "123",
+  "username": "cashier.one",
+  "email": "cashier@example.com",
+  "temporaryPassword": "a-private-temporary-password"
+}
 ```
 
-Role names organize grants; they are not hard-coded as authorization bypasses.
-Reusable middleware supports a global permission check and a branch-targeted
-permission check.
+The service validates the employee and one-account-per-employee constraint,
+checks the username/email login namespace, hashes the temporary password before
+opening its write transaction, stores only the bcrypt hash, and forces
+`must_change_password = true`. Neither the temporary password nor hash appears in
+the response or audit log.
 
-- `user_roles.branch_id IS NULL` grants a permission globally.
-- A non-null `branch_id` grants it only for that exact branch.
-- A Branch A grant never authorizes Branch B.
-- Disabled roles grant nothing.
-- For an employee-linked account, operational branch access also requires that
-  employee's current active assignment to the target branch.
+PATCH accepts only `employeeId`, `username`, `email`, and `isActive`. It never
+accepts `password_hash`, a raw password, or an arbitrary
+`must_change_password`. The current administrator cannot deactivate their own
+account through this endpoint. Changing or removing an employee link is blocked
+while branch-scoped grants exist because unlinking would otherwise remove Phase
+3's employee-assignment access gate; administrators must first reconcile those
+grants. An account linked to a terminated employee cannot be activated again;
+the employee lifecycle must remain the authoritative security boundary.
 
-A global grant or an exact matching branch grant can satisfy a target-branch
-permission check, subject to the employee-assignment rule. Future business
-modules must derive a resource's branch from trusted database data; they must not
-authorize a resource merely from a client-supplied branch ID.
+Administrative reset accepts:
 
-Roles and permissions are read from MySQL at authorization time instead of being
-trusted from stale JWT claims. Removing a grant or disabling a role therefore
-takes effect on subsequent checks without waiting for the token to expire.
-Queries use `DISTINCT` and bounded query counts to avoid duplicated result sets
-and N+1 database access.
+```json
+{
+  "temporaryPassword": "another-private-temporary-password"
+}
+```
 
-The reusable forced-password-change middleware returns `403` for future business
-routes while `must_change_password` is true. It is intentionally not applied to
-`/api/auth/me` or `/api/auth/change-password`.
+It validates and hashes before the transaction, locks the target user, replaces
+the hash, sets `must_change_password = true`, writes `USER_PASSWORD_RESET`, and
+commits atomically. It does not require the target's old password. Already-issued
+JWTs are stateless and are not revoked merely by changing a password; deactivate
+the account when immediate lockout is required, because authentication checks
+`users.is_active` on every protected request.
 
-## Security behavior and boundaries
+## Role and permission administration
 
-- Passwords are never trimmed, logged, stored, returned, or embedded in JWTs as
-  plaintext. Identifiers may be trimmed before lookup.
-- bcrypt applies a per-password random salt and configurable cost before storage.
-- Repository SQL is parameterized; request values are never concatenated into
-  statements.
-- Helmet adds defensive HTTP response headers. CORS remains development-
-  permissive until the frontend origin is chosen and must be restricted before
-  production.
-- Login limiting applies only to the login route. Its in-memory store is suitable
-  for the current single-process development setup; horizontally scaled
-  production instances require a shared store such as Redis and proxy-aware key
-  configuration.
-- `audit_logs` is append-only by policy. Successful password changes record safe
-  metadata only—never hashes, passwords, tokens, or secrets.
-- `mysql2` returns `BIGINT` identifiers as strings to preserve exact values.
-- API errors use `400`, `401`, `403`, `404`, `429`, `500`, and `503` as
-  appropriate, without exposing stack traces, SQL text, driver internals, or JWT
-  verification details.
-- Access tokens are stateless. Changing a password cannot immediately revoke a
-  token already issued to that account. Short expiry limits this exposure;
-  refresh tokens and server-side revocation are intentionally deferred.
-- There is no fake logout endpoint: a client logs out by securely deleting its
-  token. Server-side session/revocation support requires a future design.
-- MFA, password reset email, refresh tokens, public signup, and full account CRUD
-  are not part of Phase 3.
+Role fields are `roleCode`, `roleName`, `description`, and `isActive`. Codes and
+names are independently unique, and conflicts return `409`. Deactivation leaves
+existing `user_roles` rows in place but Phase 3 ignores the inactive role, so it
+grants no permissions unless later reactivated. Roles are never physically
+deleted by the API.
 
-## Testing
+The read-only permission catalog returns `permissionId`, `permissionCode`,
+`permissionName`, and `description`. There is intentionally no POST, PATCH, or
+DELETE permission endpoint.
 
-The integration suite is designed to cover Phase 2 regressions and Phase 3
-authentication, password-change, and authorization behavior against the real
-test-configured MySQL database. It creates uniquely named authentication-only
-fixtures and removes them in reverse foreign-key order, including audit records,
-after the run. It does not modify product, inventory, purchase, sale, POS,
-transfer, or stock-count data and never drops or recreates the database.
+Replace a role's complete permission set with:
 
-Run it only against a suitable local/development database and application
-account:
+```json
+{
+  "permissionIds": ["1", "2", "3"]
+}
+```
+
+Duplicate IDs are rejected. The repository locks the role, verifies every ID,
+preserves bridge rows already present, deletes removed `role_permissions`, inserts
+new ones, and audits sorted before/after permission codes in one transaction. An
+empty array intentionally removes every permission from an ordinary role. It is
+rejected for `SYSTEM_ADMIN` unless all ten canonical Phase 4 permissions remain.
+
+## Global and branch-scoped user roles
+
+Create a global role grant:
+
+```json
+{
+  "roleId": "4",
+  "branchId": null
+}
+```
+
+Create a branch grant:
+
+```json
+{
+  "roleId": "8",
+  "branchId": "7"
+}
+```
+
+`branchId: null` means global. A branch ID means only that exact branch. New
+grants require an existing user and active role; branch grants also require an
+existing branch. For an employee-linked user, a branch grant additionally
+requires a current employee assignment at that branch. The schema intentionally
+allows an unlinked system account to receive a branch grant without an employee
+assignment.
+
+The server always stores the authenticated administrator as
+`assigned_by_user_id`; the client cannot submit or spoof that value. The schema's
+generated scope guard makes each `(user, role, global-or-branch scope)` grant
+unique, including under concurrency.
+
+Revocation verifies that `userRoleId` belongs to the target user and removes only
+that association. It does not delete the role. An administrator cannot revoke
+their own role assignment through this endpoint; another administrator with the
+current global `user_roles.manage` permission must perform that action.
+
+## Audit behavior
+
+Administrative mutation and its `audit_logs` insert share a transaction wherever
+consistency requires it. Audit rows identify the authenticated actor, optional
+actor employee, affected branch context, action, entity/table type, record ID,
+before/after JSON, IP address, user-agent, and optional request ID.
+
+Phase 4 action types include:
+
+- `BRANCH_CREATED`, `BRANCH_UPDATED`;
+- `EMPLOYEE_CREATED`, `EMPLOYEE_UPDATED`, `EMPLOYEE_TERMINATED`;
+- `EMPLOYEE_BRANCH_ASSIGNED`, `EMPLOYEE_BRANCH_ASSIGNMENT_ENDED`,
+  `EMPLOYEE_PRIMARY_BRANCH_CHANGED`;
+- `USER_CREATED`, `USER_UPDATED`, `USER_PASSWORD_RESET`;
+- `ROLE_CREATED`, `ROLE_UPDATED`, `ROLE_PERMISSIONS_CHANGED`; and
+- `USER_ROLE_ASSIGNED`, `USER_ROLE_REVOKED`.
+
+`audit_logs.employee_id` is the actor's linked employee ID, not the affected
+employee. The target is represented by `entity_type` and `entity_record_id`.
+Passwords, hashes, JWTs, JWT secrets, and database credentials are forbidden from
+all audit JSON and notes. Audit records remain append-only by service policy.
+
+## Transactions and concurrency
+
+Multi-table writes use a borrowed pool connection with `beginTransaction`,
+commit on success, rollback on failure, and release in `finally`. Slow bcrypt
+work happens before a transaction where it can be safely revalidated afterward.
+
+`SELECT ... FOR UPDATE` is used where another request could otherwise change a
+decision between validation and writing, including termination, primary
+assignment switching, account changes, password reset, permission replacement,
+and user-role grants. Unique constraints remain a final concurrency backstop and
+expected duplicate-key errors are translated to `409` without revealing MySQL
+details.
+
+The database has separate unique keys for `users.username` and `users.email`.
+Because login accepts either field, user administration serializes credential
+namespace mutations and also checks cross-column collisions so it does not create
+an ambiguous identifier. Phase 3 login remains fail-closed if legacy or externally
+inserted data is ambiguous.
+
+## Security behavior and limitations
+
+- Passwords are never trimmed, logged, returned, or put in JWTs. bcrypt embeds a
+  random salt and configurable work factor in each stored hash.
+- JWTs are explicitly signed/verified with HS256, issuer, audience, and a short
+  expiry. The signing secret exists only in ignored environment configuration.
+- Every protected request reloads current user state; permission checks join
+  current active roles and permission rows.
+- Administrative permissions must be global. A branch role cannot accidentally
+  become organization administration authority.
+- `must_change_password` blocks all `/api/admin` routes while leaving `/me` and
+  `/change-password` available.
+- All SQL values are parameterized. Dynamic assignment lists and placeholder
+  counts come only from code-controlled whitelists and validated arrays.
+- Helmet is active. CORS remains development-permissive until a frontend origin
+  is selected and must be restricted before production.
+- The login limiter uses process memory; multiple production instances require a
+  shared store and correct trusted-proxy configuration.
+- Access tokens are stateless. There are no refresh tokens, revocation table,
+  MFA, OAuth, or fake server-side logout in this phase.
+- The bootstrap is secure only in a real interactive TTY and intentionally has no
+  command-line password option.
+- Database grants should enforce append-only audit policy and forbid direct
+  destructive master-data access outside controlled migrations/operations.
+
+## Testing and verification
+
+Run the complete suite against the configured local/development database:
 
 ```bash
 npm test
 ```
 
-The intended checks include:
+The Phase 4 validation run covers:
 
-- health `200`, database health `200`, unknown route `404`, and graceful shutdown;
-- login validation `400`, generic invalid credentials `401`, successful login
-  `200`, safe response fields, and an updated `last_login_at`;
-- missing/malformed/invalid/expired token `401` and valid `/me` access `200`;
-- inactive-account rejection and exposed `must_change_password` state;
-- password validation, bcrypt storage, audit insertion, flag clearing, and login
-  with the changed password;
-- global permission success, matching-branch success, cross-branch denial,
-  missing-permission denial, inactive-role denial, and active employee assignment
-  enforcement;
-- login throttling with a clean `429` response;
-- complete cleanup of every temporary authentication fixture.
+- Phase 2 health, database health, JSON 404, and graceful SIGINT/SIGTERM;
+- Phase 3 login, JWT enforcement, password-change gating, current account state,
+  global/branch permissions, inactive roles, and login limiting;
+- no token (`401`), forced-password user (`403`), missing permission (`403`),
+  correct global permission success, and branch-only admin grant denial;
+- branch create/read/list/update, duplicate code `409`, and no DELETE route;
+- employee create/read/update, assignment create/primary switch/end,
+  termination, and linked-user deactivation;
+- account creation with bcrypt and forced change, safe responses, uniqueness,
+  reset, and self-deactivation protection;
+- role create/read/update, catalog read, atomic permission replacement, and
+  inactive-role behavior;
+- global/branch user-role grants, linked employee assignment validation,
+  server-owned `assigned_by_user_id`, duplicate grant, revoke, and self-revoke
+  protection;
+- expected secret-free audit events and pagination validation; and
+- exact cleanup of uniquely identified `TEST_*` branches, employees,
+  assignments, users, roles, bridges, and audit rows.
 
-The latest local validation on 2026-09-05 passed all 19 tests. It confirmed the
-configured `supermarket_management` connection, all documented HTTP status
-behaviors, both graceful-shutdown signals, and zero remaining temporary fixture
-rows. Results are environment-specific, so rerun `npm test` after relevant code,
+Canonical seed permissions and `SYSTEM_ADMIN` configuration may remain because
+they are intentional application configuration rather than test fixtures. Tests
+must never drop/recreate the database or touch catalog, inventory, purchasing,
+POS, sales, returns, payment, transfer, or stock-count data.
+
+The latest local validation on 2026-09-06 passed all 33 discovered tests: 14
+Phase 4 suite/test entries and 19 retained Phase 2/3 suite/test entries. It
+confirmed both graceful-shutdown signals, the active
+`supermarket_management` database with 54 tables, all ten canonical permissions,
+one `SYSTEM_ADMIN` role with all ten canonical mappings, and zero remaining
+temporary Phase 3/4 branch, employee, role, user, bridge, or audit fixtures.
+Results are environment-specific, so run `npm test` again after relevant code,
 configuration, or database changes.
 
-For quick manual Phase 2 checks after startup:
+Quick Phase 2 smoke checks after startup:
 
 ```bash
 curl -i http://localhost:5000/api/health
@@ -456,69 +755,87 @@ curl -i http://localhost:5000/api/health/database
 curl -i http://localhost:5000/something-that-does-not-exist
 ```
 
-## Practical concepts
+## Practical learning summary
 
-1. **Authentication vs authorization:** authentication establishes the current
-   user; authorization checks whether that user has a required capability in the
-   applicable scope.
-2. **bcrypt:** bcrypt is a deliberately slow, one-way password-hashing function.
-   Its cost makes high-volume password guessing more expensive.
-3. **Hashing instead of encryption:** an application verifies a password but
-   does not need to recover it. A one-way hash avoids storing a decryptable copy.
-4. **Salts:** a salt makes identical passwords produce different hashes and
-   defeats reusable precomputed hash tables. bcrypt creates and stores the random
-   salt and cost inside each encoded hash.
-5. **JWT:** a JWT is a compact signed set of claims that the client presents on
-   later requests.
-6. **This JWT's contents:** the only application identity claim is `sub`, holding
-   the user ID as a string. Standard issuer, audience, issued-at, and expiry
-   metadata constrain its use.
-7. **Signature verification:** the server recomputes and verifies the signature
-   before trusting claims. A modified token fails verification.
-8. **Secret privacy:** anyone with `JWT_SECRET` can mint tokens that appear valid,
-   so it belongs only in secret configuration and must never be committed or
-   returned.
-9. **Expiration:** expiry limits how long a stolen or stale access token remains
-   usable and forces periodic reauthentication.
-10. **Bearer authentication:** `Authorization: Bearer <token>` means possession
-    of that token is the credential; clients must protect it like a password.
-11. **Middleware:** middleware runs common logic before a route handler—for
-    example security headers, token authentication, permissions, rate limits,
-    and error handling.
-12. **Request user context:** after verification and a current database lookup,
-    authentication middleware places safe account fields on the request so later
-    code does not reparse or blindly trust the token.
-13. **Permission chain:** a user receives scoped roles through `user_roles`; an
-    active role receives capabilities through `role_permissions`; endpoints ask
-    for stable `permission_code` values.
-14. **Global vs branch role:** a null role scope applies system-wide; a branch ID
-    applies only to that branch. Employee-linked operational access additionally
-    requires a current assignment.
-15. **Database-current checks:** keeping large permission lists out of JWTs lets
-    grant removal and role disabling affect the next authorization decision.
-16. **`must_change_password`:** this account flag lets future business routes
-    require an initial or administratively reset password to be replaced first.
-17. **No public signup:** this is an internal staff system; account creation must
-    eventually be an authorized administrative action, not anonymous enrollment.
-18. **No fake JWT logout:** stateless access tokens cannot be invalidated merely
-    by returning a logout response. The client deletes its token; immediate
-    revocation needs persisted server-side state.
-19. **Short-lived tokens:** short expiry reduces exposure while refresh-token and
-    revocation infrastructure is absent.
-20. **Parameterized SQL:** placeholders send values separately from SQL syntax,
-    reducing SQL-injection risk and keeping database access consistent.
-21. **Generic login failures:** using the same message for unknown users, wrong
-    passwords, and inactive accounts prevents easy account enumeration.
-22. **Login rate limiting:** throttling repeated attempts raises the cost of
-    online guessing without restricting ordinary authenticated API traffic.
+1. **Why branches and employees come first:** later stock and money operations
+   need a valid physical branch and an accountable staff actor before they can
+   be trustworthy.
+2. **Employee versus user:** an employee is a personnel/business identity; a
+   user is a security principal that can authenticate and receive access.
+3. **Employee without a login:** many staff members do not need system access,
+   but their employment and operational history still belongs in the database.
+4. **System user without `employee_id`:** automation or an initial bootstrap
+   administrator may need a controlled identity without pretending to be a staff
+   record.
+5. **Employee branch assignments:** the bridge records where an employee works,
+   their title, effective dates, and which open assignment is primary.
+6. **Why assignment history is preserved:** past assignments explain who could
+   act at a branch on a historical business date and support investigations and
+   reporting.
+7. **Why termination is a workflow:** changing several related security and
+   assignment records atomically cannot be represented safely by deleting one
+   employee row.
+8. **Why termination disables the login:** a terminated employee must not retain
+   usable credentials after their staff status and assignments end.
+9. **Role versus permission:** a permission is one application capability; a
+   role is a manageable bundle of those capabilities.
+10. **Why permission codes are application-defined:** code such as
+    `employees.manage` has meaning because a route explicitly checks it; an
+    arbitrary database string does not implement new behavior.
+11. **Why permissions are seeded:** an idempotent catalog keeps code and database
+    configuration synchronized without exposing a misleading permission-creation
+    API.
+12. **How `SYSTEM_ADMIN` works:** it is authorized through the same active-role
+    and permission joins as every other role, while safety rules protect the
+    canonical administration capabilities from accidental lockout.
+13. **Global versus branch-scoped roles:** a null `branch_id` grants the role
+    system-wide; a real ID limits it to that branch and cannot satisfy a global
+    administration check.
+14. **Meaning of `assigned_by_user_id`:** it records which authenticated
+    administrator created a user-role grant and is never trusted from client
+    input.
+15. **Why temporary passwords force a change:** an administrator may know the
+    initial/reset secret, so the target user must replace it before accessing
+    administrative or future business functions.
+16. **Why hashes are never returned:** even one-way hashes are sensitive offline
+    guessing material and have no legitimate API response purpose.
+17. **Why important writes use transactions:** the main mutation and its related
+    records/audit must all commit or all roll back; partial administration state
+    can cause unauthorized access or lockouts.
+18. **Why `SELECT ... FOR UPDATE` matters:** it prevents two transactions from
+    both making decisions from the same stale row, such as each choosing a
+    different primary assignment.
+19. **Why audit logs matter:** administration changes affect identity and access;
+    before/after evidence and actor/request context support accountability and
+    incident investigation.
+20. **Why master records are deactivated:** branches, employees, users, and roles
+    are referenced by history. Status flags preserve that history while stopping
+    future use.
+21. **Why lists need pagination:** bounded queries protect database/API resources
+    and give clients predictable navigation as the organization grows.
+22. **Why API IDs remain strings:** MySQL `BIGINT UNSIGNED` can exceed
+    JavaScript's exact integer range, so string transport prevents silent identity
+    corruption.
 
-## Version control and phase boundary
+## Phase 3 security refresher
+
+Authentication proves the current identity; authorization checks its current
+capability and scope. bcrypt is deliberately slow and salted, while JWT signing
+detects tampering but does not encrypt token contents. Bearer tokens must be
+protected like passwords. Generic login failures reduce account discovery,
+short expiration limits token exposure, rate limiting raises the cost of online
+guessing, and parameterized SQL separates untrusted values from SQL syntax.
+
+There is no public signup and no fake JWT logout. Clients log out by deleting
+their access token; true immediate token revocation requires future persisted
+revocation/session design.
+
+## Version control and stopping point
 
 `.gitignore` excludes `node_modules/`, the real `.env`, npm debug logs, and local
-operating-system metadata. It keeps `.env.example`, source files, tests, and both
-database documents trackable.
+operating-system metadata. It keeps `.env.example`, source, tests, scripts, and
+both database documents trackable.
 
-Phase 3 stops at reusable authentication and authorization. It does not include
-the frontend, Postman collections, product or stock workflows, POS, sales,
-reports, deployment configuration, public registration, refresh tokens, password
-reset, MFA, or OAuth. Those require separately reviewed later phases.
+Phase 4 stops after organization, staff, and access administration. Phase 5 must
+not begin until Phase 4 implementation, MySQL integration results, fixture
+cleanup, documentation, and security behavior are reviewed and approved.

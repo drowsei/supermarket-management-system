@@ -1,14 +1,16 @@
 {
   "name": "supermarket-management-system",
   "version": "1.0.0",
-  "description": "Authentication and authorization foundation for a multi-branch supermarket management system",
+  "description": "Organization and access administration API for a multi-branch supermarket management system",
   "private": true,
   "type": "module",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "test": "node --test --test-concurrency=1"
+    "test": "node --test --test-concurrency=1",
+    "seed:access": "node scripts/seed-access-control.js",
+    "bootstrap:admin": "node scripts/bootstrap-admin.js"
   },
   "keywords": [],
   "author": "",
