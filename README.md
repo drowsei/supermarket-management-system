@@ -1,21 +1,22 @@
 # Supermarket Management System
 
 A production-oriented, multi-branch supermarket management system built in
-reviewed phases. Phase 5A adds the secured, organization-wide reference catalog
-API on top of the approved 54-table database and the completed Phase 2-4
-foundation.
+reviewed phases. Phase 5B adds the secured product-master API on top of the
+approved 54-table database, the Phase 5A reference catalog, and the completed
+Phase 2-4 foundation.
 
-The current API can operate units of measure, hierarchical categories, brands,
-and tax rates as well as the existing branches, employees, assignments, users,
-roles, permissions, and user-role grants. It retains the Phase 2 health behavior,
-Phase 3 authentication/authorization, and Phase 4 organization administration.
+The current API can operate products, sellable/stockable variants, unit-conversion
+packages, case-sensitive barcodes, units of measure, hierarchical categories,
+brands, and tax rates, as well as the existing organization and access records.
+It retains the Phase 2 health behavior, Phase 3 authentication/authorization,
+and Phase 4 organization administration.
 
-Phase 5A does **not** redesign the database. The approved
+Phases 5A and 5B do **not** redesign the database. The approved
 [`database/schema.sql`](database/schema.sql) and detailed
 [`database/README.md`](database/README.md) remain the authority for the existing
 54 tables.
 
-## Phase 5A purpose and boundaries
+## Phase 5A and Phase 5B purpose and boundaries
 
 Reference catalog records describe shared business concepts that products will
 reference later. They are organization-wide configuration, not branch stock,
@@ -31,11 +32,25 @@ Phase 5A includes:
 - transaction-bound audit events, bounded pagination, search, and filters; and
 - live MySQL integration tests while preserving every Phase 2-4 regression.
 
-Phase 5A is complete at the database-backed reference-catalog boundary described
-here. Phase 5B has not started: there are no product, variant, package, or barcode
-APIs. Phase 5C has not started: there is no branch pricing or effective-price
-resolver. Suppliers, customers, inventory, purchasing, POS, sales, reports,
-frontend, Postman, and Phase 6 work also remain intentionally excluded.
+Phase 5B builds on those references and includes:
+
+- product administration with active-reference lifecycle protection;
+- variant administration with exact decimal fields, fractional-unit validation,
+  lot-policy stability, and atomic active-variant/base-package creation;
+- package administration with exact base-quantity conversions, one active base
+  per active variant, PATCH-based lifecycle configuration, and downstream-use
+  immutability;
+- variant- and package-scoped barcode administration with GS1/GTIN validation,
+  PATCH-based atomic primary switching, exact lookup, controlled unused-barcode
+  deletion, and sale-history stability; and
+- global authorization, bounded lists, transaction-bound audit events, and
+  concurrency-safe row locking across all four resources.
+
+Phase 5A and Phase 5B are complete at the database-backed product-master
+boundary described here. Phase 5C has not started: there is no branch pricing or
+effective-price resolver. Suppliers, customers, inventory, purchasing, POS,
+sales, reports, frontend, Postman, and Phase 6 work remain intentionally
+excluded.
 
 ## Technology stack
 
@@ -102,6 +117,10 @@ supermarket-management-system/
 │   │   ├── branch.controller.js
 │   │   ├── category.controller.js
 │   │   ├── employee.controller.js
+│   │   ├── product.controller.js
+│   │   ├── productBarcode.controller.js
+│   │   ├── productPackage.controller.js
+│   │   ├── productVariant.controller.js
 │   │   ├── role.controller.js
 │   │   ├── taxRate.controller.js
 │   │   ├── unitOfMeasure.controller.js
@@ -119,6 +138,11 @@ supermarket-management-system/
 │   │   ├── branch.repository.js
 │   │   ├── category.repository.js
 │   │   ├── employee.repository.js
+│   │   ├── product.repository.js
+│   │   ├── productBarcode.repository.js
+│   │   ├── productCatalog.repository.js
+│   │   ├── productPackage.repository.js
+│   │   ├── productVariant.repository.js
 │   │   ├── role.repository.js
 │   │   ├── taxRate.repository.js
 │   │   ├── unitOfMeasure.repository.js
@@ -134,6 +158,12 @@ supermarket-management-system/
 │   │   │   │   └── unit.routes.js
 │   │   │   ├── employee.routes.js
 │   │   │   ├── index.js
+│   │   │   ├── products/
+│   │   │   │   ├── index.js
+│   │   │   │   ├── product.routes.js
+│   │   │   │   ├── productBarcode.routes.js
+│   │   │   │   ├── productPackage.routes.js
+│   │   │   │   └── productVariant.routes.js
 │   │   │   ├── role.routes.js
 │   │   │   └── user.routes.js
 │   │   ├── auth.routes.js
@@ -145,12 +175,17 @@ supermarket-management-system/
 │   │   ├── branch.service.js
 │   │   ├── category.service.js
 │   │   ├── employee.service.js
+│   │   ├── product.service.js
+│   │   ├── productBarcode.service.js
+│   │   ├── productPackage.service.js
+│   │   ├── productVariant.service.js
 │   │   ├── role.service.js
 │   │   ├── taxRate.service.js
 │   │   ├── unitOfMeasure.service.js
 │   │   └── userAdmin.service.js
 │   ├── utils/
 │   │   ├── auditContext.js
+│   │   ├── barcode.js
 │   │   ├── databaseError.js
 │   │   ├── httpError.js
 │   │   ├── jwt.js
@@ -168,13 +203,20 @@ supermarket-management-system/
 │   │   │   ├── category.validator.js
 │   │   │   ├── taxRate.validator.js
 │   │   │   └── unitOfMeasure.validator.js
+│   │   ├── products/
+│   │   │   ├── common.validator.js
+│   │   │   ├── product.validator.js
+│   │   │   ├── productBarcode.validator.js
+│   │   │   ├── productPackage.validator.js
+│   │   │   └── productVariant.validator.js
 │   │   └── auth.validator.js
 │   ├── app.js
 │   └── server.js
 ├── test/
 │   ├── admin.integration.test.js
 │   ├── auth.integration.test.js
-│   └── catalogReference.integration.test.js
+│   ├── catalogReference.integration.test.js
+│   └── productCatalog.integration.test.js
 ├── .env
 ├── .env.example
 ├── .gitignore
@@ -183,7 +225,8 @@ supermarket-management-system/
 └── README.md
 ```
 
-`catalogReference.integration.test.js` exercises Phase 5A against MySQL,
+`productCatalog.integration.test.js` exercises Phase 5B against MySQL,
+`catalogReference.integration.test.js` retains Phase 5A coverage,
 `admin.integration.test.js` retains Phase 4 coverage, and
 `auth.integration.test.js` retains the detailed Phase 2 and Phase 3 regression
 coverage. The test runner executes them serially so their isolated database
@@ -290,7 +333,7 @@ The idempotent catalog contains 16 canonical Phase 4/5 permissions:
 | `catalog.read` | View shared reference catalog configuration |
 | `catalog.manage` | Create and update shared reference catalog configuration |
 | `products.read` | View products, variants, packages, and barcodes in Phase 5B |
-| `products.manage` | Create and update products, variants, packages, and barcodes in Phase 5B |
+| `products.manage` | Create/update product master data and delete unused barcodes in Phase 5B |
 | `pricing.read` | View branch pricing configuration in Phase 5C |
 | `pricing.manage` | Create and update branch pricing configuration in Phase 5C |
 
@@ -300,9 +343,10 @@ metadata, preserves unrelated permissions and roles, ensures the
 canonical permission. Re-running the command produces the same logical
 configuration and does not duplicate rows.
 
-Only `catalog.read` and `catalog.manage` are used by Phase 5A routes. The product
-and pricing permissions are seeded now as stable reserved capabilities, but no
-Phase 5B or Phase 5C endpoint exists yet.
+Phase 5A uses `catalog.read` and `catalog.manage`; Phase 5B uses `products.read`
+and `products.manage`. All four are global administration permissions. The two
+pricing permissions remain reserved for Phase 5C and are not used by any route
+yet.
 
 If `SYSTEM_ADMIN` already exists but is inactive, the seed deliberately leaves
 it inactive and prints a warning instead of silently reversing an emergency or
@@ -406,6 +450,10 @@ Supported filters:
 | catalog categories | `isActive`, `parentCategoryId`, `search` |
 | catalog brands | `isActive`, `search` |
 | catalog tax rates | `isActive`, `isInclusive`, `search` |
+| products | `search`, `status`, `categoryId`, `brandId`, `taxRateId` |
+| product variants | `search`, `status`, `unitOfMeasureId`, `isFractional`, `lotTrackingMode`, `requiresExpiryDate` |
+| product packages | `search`, `status`, `packageUnitOfMeasureId`, `isBaseUnit`, `isPurchasable`, `isSellable` |
+| product barcodes | `search`, `barcodeType`, `productPackageId`, `isPrimary` |
 
 Ordering is code-controlled and includes stable ID tie-breakers. Search and
 filters use parameterized values rather than client-supplied SQL fragments.
@@ -514,6 +562,154 @@ No business reference rows such as `EACH`, `KG`, `LITRE`, or `VAT` are seeded
 automatically. Those values are organization policy and must be created
 deliberately through the authorized catalog API.
 
+## Phase 5B endpoints and required permissions
+
+Product master data is organization-wide. Every route inherits authentication
+and required-password-change enforcement from `/api/admin`, then requires a
+current **global** product permission. A branch-scoped grant does not satisfy
+these endpoints.
+
+| # | Method and path | Required permission | Purpose |
+| ---: | --- | --- | --- |
+| 1 | `GET /api/admin/catalog/products` | `products.read` | Paginated product list |
+| 2 | `GET /api/admin/catalog/products/:productId` | `products.read` | Product detail |
+| 3 | `POST /api/admin/catalog/products` | `products.manage` | Create a product |
+| 4 | `PATCH /api/admin/catalog/products/:productId` | `products.manage` | Update a product |
+| 5 | `GET /api/admin/catalog/products/:productId/variants` | `products.read` | Paginated variants owned by a product |
+| 6 | `POST /api/admin/catalog/products/:productId/variants` | `products.manage` | Create a variant, optionally with its base package |
+| 7 | `GET /api/admin/catalog/variants/:variantId` | `products.read` | Resolve a variant directly by ID |
+| 8 | `PATCH /api/admin/catalog/variants/:variantId` | `products.manage` | Update a variant resolved directly by ID |
+| 9 | `GET /api/admin/catalog/variants/:variantId/packages` | `products.read` | Paginated packages owned by a variant |
+| 10 | `POST /api/admin/catalog/variants/:variantId/packages` | `products.manage` | Create a package definition for a variant |
+| 11 | `GET /api/admin/catalog/packages/:packageId` | `products.read` | Resolve a package directly by ID |
+| 12 | `PATCH /api/admin/catalog/packages/:packageId` | `products.manage` | Update a package definition resolved directly by ID |
+| 13 | `GET /api/admin/catalog/variants/:variantId/barcodes` | `products.read` | Paginated barcodes owned by a variant |
+| 14 | `POST /api/admin/catalog/variants/:variantId/barcodes` | `products.manage` | Create a variant- or package-level barcode |
+| 15 | `GET /api/admin/catalog/barcodes/:barcodeId` | `products.read` | Resolve a barcode directly by ID |
+| 16 | `PATCH /api/admin/catalog/barcodes/:barcodeId` | `products.manage` | Update a barcode, including primary preference |
+| 17 | `GET /api/admin/catalog/barcodes/lookup?barcode=<exact-value>` | `products.read` | Exact case-sensitive barcode lookup |
+| 18 | `DELETE /api/admin/catalog/barcodes/:barcodeId` | `products.manage` | Delete one unused barcode |
+
+Products and variants have no DELETE route, and package definitions are retired
+through lifecycle status rather than deleted. Barcodes are the controlled
+exception because they have no lifecycle status: an unused barcode may be
+deleted, while a sale-referenced barcode returns `409`. Direct variant, package,
+and barcode resource routes resolve their own owning chain internally. Parent
+ownership remains explicit and validated on product-variant, variant-package,
+and variant-barcode collection/create routes. The exact barcode lookup route is
+registered before the dynamic `:barcodeId` route.
+
+## Product-master behavior
+
+### Products and active references
+
+A product is the shared merchandising identity. It references one category and
+optional brand and tax rate; it does not contain a barcode or stock quantity.
+Product codes are trimmed and uppercased, while names and descriptions preserve
+meaningful casing. An `ACTIVE` product may reference only active catalog rows.
+Reference rows are locked and revalidated before the product row so a concurrent
+Phase 5A deactivation cannot commit an invalid active reference.
+
+Products use `ACTIVE`, `INACTIVE`, and `DISCONTINUED` states. Moving an active
+product out of service is rejected while any active variant remains, and no
+variant is changed implicitly. A newly created active product may have no
+variant while an administrator completes configuration.
+
+### Variants, exact values, and lot policy
+
+A product variant is the sellable/stockable SKU and owns the base inventory unit.
+SKUs are globally unique and uppercased; variant names are unique within their
+product. Size and units-per-pack use exact `DECIMAL(12,3)` strings, and the
+catalog fallback selling price uses an exact nonnegative `DECIMAL(19,4)` string.
+JSON numbers, exponent notation, excess precision, and out-of-range values are
+rejected before SQL.
+
+Fractional variants require a unit whose `allowsFraction` flag is true. Expiry
+tracking requires `OPTIONAL` or `REQUIRED` lot tracking. After operational
+inventory/history exists, this implementation conservatively rejects any actual
+lot-mode or expiry-policy change rather than inventing or rewriting historical
+allocations. A variant's base UOM cannot change after any package exists or after
+base-quantity configuration/history (including a supplier-product mapping) has
+established its meaning.
+
+Creating an active variant requires a nested base-package definition. Both rows
+and both audit events commit atomically. Activating an existing variant requires
+an active parent product and exactly one active base package.
+
+### Packages and the active-base invariant
+
+A package converts a buying or selling unit into the variant's base inventory
+quantity; it never creates separate stock. Conversion values are exact positive
+`DECIMAL(18,6)` strings. Optional package fallback prices are exact nonnegative
+`DECIMAL(19,4)` strings. Package codes are uppercased and unique within a
+variant.
+
+Every active variant must have exactly one package where `isBaseUnit` is true
+and status is `ACTIVE`. Every package marked as a base definition, including an
+inactive one, must use the variant UOM and conversion `1.000000`.
+`isBaseUnit` is a writable structural field on normal package PATCH requests,
+but a request that would create two active base packages or leave an active
+variant with none returns `409`. There is no implicit multi-row base switch.
+Administrators reconfigure the base lifecycle explicitly by making the variant
+inactive, retiring or changing the old definition, establishing exactly one
+valid active base package, and then reactivating the variant. Package rows are
+never changed implicitly.
+
+Once a package is used by supplier-package configuration, a branch package
+price, purchase item, sale item, or sales-return item, its structural UOM,
+conversion, and base designation are immutable. Descriptive/current-use fields
+remain editable subject to lifecycle rules. Historical conversion snapshots are
+never rewritten; administrators retire the old package and create a new
+definition when identity must change.
+
+### Barcodes and primary scopes
+
+Barcodes remain case-sensitive strings, preserving leading zeroes and display
+case. They are globally unique and may belong to the whole variant or one package
+owned by that variant. `EAN_8`, `UPC_A`, `EAN_13`, and `GTIN_14` require the exact
+digit length and a valid GS1 check digit; `PLU` requires four or five digits.
+`CODE_128`, `INTERNAL`, and `OTHER` accept a nonblank string up to 64 characters.
+
+Primary preference is independent per scope: one variant-level primary and one
+primary for each package may coexist. Setting `isPrimary` to `true` through
+barcode PATCH locks the exact destination scope, demotes an existing primary,
+and promotes the target in one transaction without disturbing unrelated package
+scopes. Setting it to `false` demotes only the target, and zero primaries in a
+scope is valid. If a still-primary barcode moves to another package scope, the
+same destination-scope switch is applied atomically. Once a barcode ID appears
+in a sale item, its value, type, and package scope are immutable; current primary
+preference may still change.
+
+Exact lookup accepts one required `barcode` query string without normalization
+or numeric conversion, so leading zeroes and case remain significant. An unused
+barcode may be deleted physically together with a `PRODUCT_BARCODE_DELETED`
+audit record; sale history blocks deletion with `409`. Deleting a primary does
+not nominate a replacement because zero primary barcodes are permitted.
+
+### Product pagination, audit, and locking
+
+All four collection routes use page `1`, limit `20`, maximum `100`, parameterized
+filters, and fixed ID-backed ordering. `brandId=null`, `taxRateId=null`, and
+barcode `productPackageId=null` select rows whose corresponding nullable column
+is SQL `NULL`; omission means no filter.
+
+Successful changes use `PRODUCT_CREATED`, `PRODUCT_UPDATED`,
+`PRODUCT_VARIANT_CREATED`, `PRODUCT_VARIANT_UPDATED`,
+`PRODUCT_PACKAGE_CREATED`, `PRODUCT_PACKAGE_UPDATED`,
+`PRODUCT_BARCODE_CREATED`, `PRODUCT_BARCODE_UPDATED`, and
+`PRODUCT_BARCODE_DELETED`. A PATCH-based primary switch audits both the promoted
+barcode and any barcode it demotes as `PRODUCT_BARCODE_UPDATED`. A delete audit
+retains the safe deleted snapshot as its before-value and stores a null
+after-value. Safe snapshots, actor/request context, and the mutation share one
+transaction. Failed and no-op requests produce no misleading audit row.
+
+The cross-phase lock order is catalog/reference rows, product, variant, package,
+barcode, then downstream dependency rows. IDs within a level are locked in
+deterministic order. Variant-row serialization ensures concurrent base-package
+lifecycle or primary-barcode PATCH operations cannot violate their final-state
+invariants, and it keeps variant activation from racing an active base out of
+existence.
+
 ## Reference catalog behavior
 
 ### Units of measure
@@ -589,7 +785,7 @@ written on the same connection and in the same transaction as the master-data
 change. A failed change therefore creates neither catalog state nor an audit row.
 
 Dependency-changing operations lock the reference row and relevant dependent
-rows. Future product/variant services must follow the same reference-first lock
+rows. The Phase 5B product/variant services follow the same reference-first lock
 ordering and revalidate current reference state; direct SQL writers that bypass
 the service layer are outside this application-level invariant.
 
@@ -859,7 +1055,7 @@ Run the complete suite against the configured local/development database:
 npm test
 ```
 
-The complete Phase 2-5A validation run covers:
+The complete Phase 2-5B validation run covers:
 
 - Phase 2 health, database health, JSON 404, and graceful SIGINT/SIGTERM;
 - Phase 3 login, JWT enforcement, password-change gating, current account state,
@@ -881,25 +1077,32 @@ The complete Phase 2-5A validation run covers:
   validation, bounded pagination, exact filters, category-cycle concurrency,
   dependency-safe lifecycle changes, decimal-safe tax rates, and all eight
   catalog audit actions; and
+- Phase 5B global product authorization, all 18 product-master endpoints, exact
+  decimal handling, collection ownership and direct-resource resolution,
+  active-reference and active-base lifecycle rules, GTIN/UPC validation, exact
+  case-sensitive lookup, controlled barcode deletion, package/barcode history
+  stability, PATCH-based primary switching, and conflicting-operation
+  final-state checks; and
 - exact reverse-FK cleanup of uniquely identified `TEST_*` access-control,
   organization, product-dependency, reference-catalog, bridge, and audit rows.
 
 Canonical seed permissions and `SYSTEM_ADMIN` configuration may remain because
 they are intentional application configuration rather than test fixtures. Tests
 must never drop/recreate the database or touch unrelated development data.
-Phase 5A creates only uniquely identified reference rows and the minimum direct
-product/variant dependency fixtures, then removes them in reverse FK order; it
-does not touch inventory, purchasing, POS, sales, returns, payments, transfers,
-or stock-count data.
+Phase 5A creates only uniquely identified reference rows and direct dependency
+fixtures. Phase 5B creates uniquely identified product-master rows and only the
+minimum zero-balance/history rows needed to verify immutability, then removes
+them in reverse FK order. Neither suite operates real development records or
+implements inventory, purchasing, POS, sales, returns, payments, transfers, or
+stock-count business workflows.
 
-The latest local validation on 2026-09-07 passed all 43 discovered tests: 14
-Phase 4 suite/test entries, 19 retained Phase 2/3 suite/test entries, and 10
-Phase 5A suite/test entries. It confirmed both graceful-shutdown signals, the
-active `supermarket_management` database with 54 tables, all 16 canonical
-permissions, one `SYSTEM_ADMIN` role with all 16 canonical mappings, and zero
-remaining temporary Phase 3/4/5A fixtures.
-Results are environment-specific, so run `npm test` again after relevant code,
-configuration, or database changes.
+The latest local validation on 2026-09-08 passed all 52 discovered test entries:
+the 43 retained Phase 2-5A entries plus 9 Phase 5B entries. It confirmed both
+graceful-shutdown signals, MySQL 8.0.46, the active
+`supermarket_management` database with 54 tables, all 16 canonical permissions,
+one canonical `SYSTEM_ADMIN` role with all 16 mappings, and zero remaining
+temporary Phase 3/4/5A/5B fixtures. Results are environment-specific, so run
+`npm test` again after relevant code, configuration, or database changes.
 
 Quick Phase 2 smoke checks after startup:
 
@@ -990,7 +1193,8 @@ revocation/session design.
 operating-system metadata. It keeps `.env.example`, source, tests, scripts, and
 both database documents trackable.
 
-Phase 5A stops after shared reference-catalog administration. Phase 5B product,
-variant, package, and barcode work must not begin until this implementation,
-MySQL integration evidence, fixture cleanup, documentation, and concurrency
-rules are reviewed and approved.
+Phase 5A stops after shared reference-catalog administration. Phase 5B stops
+after organization-wide product, variant, package, and barcode administration.
+Phase 5C branch pricing and effective-price resolution must not begin until this
+implementation, MySQL integration evidence, fixture cleanup, documentation, and
+concurrency rules are reviewed and approved.
