@@ -77,7 +77,7 @@ async function replaceRolePermissions(roleId, permissionIds, auditContext) {
     case 'system_permissions_protected':
       throw new HttpError(
         409,
-        'The SYSTEM_ADMIN role must retain every canonical Phase 4 permission',
+        'The SYSTEM_ADMIN role must retain every canonical permission',
       );
     default:
       return {

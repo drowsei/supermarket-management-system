@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { authenticate } from '../../middleware/auth.middleware.js';
 import { requirePasswordChangeCompleted } from '../../middleware/authorization.middleware.js';
 import branchRouter from './branch.routes.js';
+import catalogRouter from './catalog/index.js';
 import employeeRouter from './employee.routes.js';
 import roleRouter, { permissionRouter } from './role.routes.js';
 import userRouter from './user.routes.js';
@@ -17,5 +18,6 @@ router.use('/employees', employeeRouter);
 router.use('/users', userRouter);
 router.use('/roles', roleRouter);
 router.use('/permissions', permissionRouter);
+router.use('/catalog', catalogRouter);
 
 export default router;

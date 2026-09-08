@@ -1,45 +1,41 @@
 # Supermarket Management System
 
 A production-oriented, multi-branch supermarket management system built in
-reviewed phases. Phase 4 adds the secured Organization and Access
-Administration API on top of the approved 54-table database, the Express/MySQL
-foundation, and the Phase 3 authentication and authorization system.
+reviewed phases. Phase 5A adds the secured, organization-wide reference catalog
+API on top of the approved 54-table database and the completed Phase 2-4
+foundation.
 
-The current API can operate branches, employees, employee branch assignments,
-internal user accounts, roles, application permissions, and global or
-branch-scoped user-role grants. It also retains the Phase 2 health endpoints and
-Phase 3 login, current-account, password-change, JWT, bcrypt, and database-current
-permission behavior.
+The current API can operate units of measure, hierarchical categories, brands,
+and tax rates as well as the existing branches, employees, assignments, users,
+roles, permissions, and user-role grants. It retains the Phase 2 health behavior,
+Phase 3 authentication/authorization, and Phase 4 organization administration.
 
-Phase 4 does **not** redesign the database. The approved
+Phase 5A does **not** redesign the database. The approved
 [`database/schema.sql`](database/schema.sql) and detailed
 [`database/README.md`](database/README.md) remain the authority for the existing
 54 tables.
 
-## Phase 4 purpose and boundaries
+## Phase 5A purpose and boundaries
 
-Organization and access administration comes before catalog and transaction
-features because every later product, inventory, purchase, POS, sale, and report
-must operate in a valid branch and must have an identifiable, authorized staff
-actor. Phase 4 supplies that foundation without starting those business domains.
+Reference catalog records describe shared business concepts that products will
+reference later. They are organization-wide configuration, not branch stock,
+sellable SKUs, or prices. Establishing these records first gives later product
+and pricing APIs stable validated foreign-key targets.
 
-Included now:
+Phase 5A includes:
 
-- branch administration without physical deletion;
-- employee administration, assignment history, and termination workflow;
-- controlled internal account provisioning and administrative password resets;
-- role administration and a read-only application permission catalog;
-- global and branch-scoped role grants;
-- transaction-bound audit events for successful administrative changes;
-- an idempotent access-control seed and secure one-time administrator bootstrap;
-- bounded pagination, search, and relevant filters; and
-- MySQL-backed HTTP integration testing while preserving Phase 2 and 3 behavior.
+- expansion of the canonical access catalog from 10 to 16 permissions;
+- unit-of-measure administration with fractional-variant safety;
+- acyclic hierarchical category administration with dependency-safe lifecycle rules;
+- brand and tax-rate administration with active-product dependency protection;
+- transaction-bound audit events, bounded pagination, search, and filters; and
+- live MySQL integration tests while preserving every Phase 2-4 regression.
 
-Still intentionally excluded are products, categories, brands, units, variants,
-packages, barcodes, prices, suppliers, customers, inventory, lots, purchasing,
-receiving, transfers, stock counts, POS, till sessions, sales, returns, payments,
-reports, dashboard, frontend, Postman, deployment, public registration, refresh
-tokens, MFA, password-reset email, and OAuth.
+Phase 5A is complete at the database-backed reference-catalog boundary described
+here. Phase 5B has not started: there are no product, variant, package, or barcode
+APIs. Phase 5C has not started: there is no branch pricing or effective-price
+resolver. Suppliers, customers, inventory, purchasing, POS, sales, reports,
+frontend, Postman, and Phase 6 work also remain intentionally excluded.
 
 ## Technology stack
 
@@ -102,9 +98,13 @@ supermarket-management-system/
 │   │   └── database.js
 │   ├── controllers/
 │   │   ├── auth.controller.js
+│   │   ├── brand.controller.js
 │   │   ├── branch.controller.js
+│   │   ├── category.controller.js
 │   │   ├── employee.controller.js
 │   │   ├── role.controller.js
+│   │   ├── taxRate.controller.js
+│   │   ├── unitOfMeasure.controller.js
 │   │   └── userAdmin.controller.js
 │   ├── middleware/
 │   │   ├── auth.middleware.js
@@ -115,13 +115,23 @@ supermarket-management-system/
 │   │   ├── accessControlSeed.repository.js
 │   │   ├── audit.repository.js
 │   │   ├── auth.repository.js
+│   │   ├── brand.repository.js
 │   │   ├── branch.repository.js
+│   │   ├── category.repository.js
 │   │   ├── employee.repository.js
 │   │   ├── role.repository.js
+│   │   ├── taxRate.repository.js
+│   │   ├── unitOfMeasure.repository.js
 │   │   └── userAdmin.repository.js
 │   ├── routes/
 │   │   ├── admin/
 │   │   │   ├── branch.routes.js
+│   │   │   ├── catalog/
+│   │   │   │   ├── brand.routes.js
+│   │   │   │   ├── category.routes.js
+│   │   │   │   ├── index.js
+│   │   │   │   ├── taxRate.routes.js
+│   │   │   │   └── unit.routes.js
 │   │   │   ├── employee.routes.js
 │   │   │   ├── index.js
 │   │   │   ├── role.routes.js
@@ -131,9 +141,13 @@ supermarket-management-system/
 │   ├── services/
 │   │   ├── auth.service.js
 │   │   ├── authorization.service.js
+│   │   ├── brand.service.js
 │   │   ├── branch.service.js
+│   │   ├── category.service.js
 │   │   ├── employee.service.js
 │   │   ├── role.service.js
+│   │   ├── taxRate.service.js
+│   │   ├── unitOfMeasure.service.js
 │   │   └── userAdmin.service.js
 │   ├── utils/
 │   │   ├── auditContext.js
@@ -149,12 +163,18 @@ supermarket-management-system/
 │   │   │   ├── employee.validator.js
 │   │   │   ├── role.validator.js
 │   │   │   └── user.validator.js
+│   │   ├── catalog/
+│   │   │   ├── brand.validator.js
+│   │   │   ├── category.validator.js
+│   │   │   ├── taxRate.validator.js
+│   │   │   └── unitOfMeasure.validator.js
 │   │   └── auth.validator.js
 │   ├── app.js
 │   └── server.js
 ├── test/
 │   ├── admin.integration.test.js
-│   └── auth.integration.test.js
+│   ├── auth.integration.test.js
+│   └── catalogReference.integration.test.js
 ├── .env
 ├── .env.example
 ├── .gitignore
@@ -163,7 +183,8 @@ supermarket-management-system/
 └── README.md
 ```
 
-`admin.integration.test.js` exercises the Phase 4 HTTP API against MySQL;
+`catalogReference.integration.test.js` exercises Phase 5A against MySQL,
+`admin.integration.test.js` retains Phase 4 coverage, and
 `auth.integration.test.js` retains the detailed Phase 2 and Phase 3 regression
 coverage. The test runner executes them serially so their isolated database
 fixtures and connection pools cannot interfere with one another.
@@ -233,7 +254,7 @@ npm run dev
 # Start normally
 npm start
 
-# Seed/reconcile canonical Phase 4 access configuration
+# Seed/reconcile canonical Phase 4/5 access configuration
 npm run seed:access
 
 # Secure interactive initial-administrator bootstrap
@@ -252,7 +273,7 @@ Permissions are application-defined capabilities. A permission code is useful
 only because application routes check that exact code, so administrators cannot
 invent permission definitions through the HTTP API.
 
-The idempotent catalog contains these ten Phase 4 permissions:
+The idempotent catalog contains 16 canonical Phase 4/5 permissions:
 
 | Permission code | Meaning |
 | --- | --- |
@@ -266,12 +287,22 @@ The idempotent catalog contains these ten Phase 4 permissions:
 | `roles.manage` | Create/update roles and replace permission sets |
 | `permissions.read` | View the read-only permission catalog |
 | `user_roles.manage` | Assign and revoke scoped user-role grants |
+| `catalog.read` | View shared reference catalog configuration |
+| `catalog.manage` | Create and update shared reference catalog configuration |
+| `products.read` | View products, variants, packages, and barcodes in Phase 5B |
+| `products.manage` | Create and update products, variants, packages, and barcodes in Phase 5B |
+| `pricing.read` | View branch pricing configuration in Phase 5C |
+| `pricing.manage` | Create and update branch pricing configuration in Phase 5C |
 
 The seed inserts missing canonical permissions, reconciles their human-readable
 metadata, preserves unrelated permissions and roles, ensures the
 `SYSTEM_ADMIN` / `System Administrator` role exists, and grants it every
-canonical Phase 4 permission. Re-running the command produces the same logical
+canonical permission. Re-running the command produces the same logical
 configuration and does not duplicate rows.
+
+Only `catalog.read` and `catalog.manage` are used by Phase 5A routes. The product
+and pricing permissions are seeded now as stable reserved capabilities, but no
+Phase 5B or Phase 5C endpoint exists yet.
 
 If `SYSTEM_ADMIN` already exists but is inactive, the seed deliberately leaves
 it inactive and prints a warning instead of silently reversing an emergency or
@@ -284,7 +315,7 @@ the role deliberately.
 `if (role === 'ADMIN')` or superuser bypass. To prevent an accidental lockout,
 the administration API protects its canonical code and name, prevents its
 deactivation, and refuses a permission replacement that omits any canonical
-Phase 4 permission. It may still hold additional future application permissions.
+permission. It may still hold additional custom application permissions.
 
 ## Initial administrator bootstrap
 
@@ -371,6 +402,10 @@ Supported filters:
 | users | `isActive`, `employeeId`, `search` |
 | roles | `isActive`, `search` |
 | permissions | `search` |
+| catalog units | `allowsFraction`, `search` |
+| catalog categories | `isActive`, `parentCategoryId`, `search` |
+| catalog brands | `isActive`, `search` |
+| catalog tax rates | `isActive`, `isInclusive`, `search` |
 
 Ordering is code-controlled and includes stable ID tie-breakers. Search and
 filters use parameterized values rather than client-supplied SQL fragments.
@@ -384,11 +419,11 @@ filters use parameterized values rather than client-supplied SQL fragments.
 | `400` | Invalid shape, field, ID, enum, date, password, or pagination input |
 | `401` | Missing or invalid authentication/current account |
 | `403` | Authenticated but password change or permission requirement is unmet |
-| `404` | Requested branch, employee, assignment, user, role, permission, or grant does not exist |
-| `409` | Uniqueness, lifecycle, self-lockout, scope, or concurrent-state conflict |
+| `404` | Requested administration or reference-catalog record does not exist |
+| `409` | Uniqueness, lifecycle, dependency, hierarchy, self-lockout, scope, or concurrent-state conflict |
 | `429` | Login rate limit exceeded |
 | `500` | Unexpected internal failure |
-| `503` | Live database unavailable or serialized credential administration is temporarily busy |
+| `503` | Live database unavailable or a serialized administration operation is temporarily busy |
 
 Responses never expose SQL, constraint names, stack traces, JWT internals,
 passwords, or password hashes.
@@ -445,6 +480,118 @@ a branch-scoped grant does not satisfy an administration endpoint.
 
 There are no branch, employee, user, role, or permission master-data DELETE
 routes. The only DELETE endpoint removes a `user_roles` association.
+
+## Phase 5A endpoints and required permissions
+
+Reference catalog data is shared organization-wide. Every route below inherits
+authentication and required-password-change enforcement from `/api/admin`, then
+uses a **global** permission check. A branch-scoped catalog grant never satisfies
+one of these routes.
+
+| # | Method and path | Required permission | Purpose |
+| ---: | --- | --- | --- |
+| 1 | `GET /api/admin/catalog/units` | `catalog.read` | Paginated unit list |
+| 2 | `GET /api/admin/catalog/units/:unitOfMeasureId` | `catalog.read` | Unit detail |
+| 3 | `POST /api/admin/catalog/units` | `catalog.manage` | Create a unit |
+| 4 | `PATCH /api/admin/catalog/units/:unitOfMeasureId` | `catalog.manage` | Update a unit |
+| 5 | `GET /api/admin/catalog/categories` | `catalog.read` | Paginated category list |
+| 6 | `GET /api/admin/catalog/categories/:categoryId` | `catalog.read` | Category detail |
+| 7 | `POST /api/admin/catalog/categories` | `catalog.manage` | Create a category |
+| 8 | `PATCH /api/admin/catalog/categories/:categoryId` | `catalog.manage` | Update/re-parent a category |
+| 9 | `GET /api/admin/catalog/brands` | `catalog.read` | Paginated brand list |
+| 10 | `GET /api/admin/catalog/brands/:brandId` | `catalog.read` | Brand detail |
+| 11 | `POST /api/admin/catalog/brands` | `catalog.manage` | Create a brand |
+| 12 | `PATCH /api/admin/catalog/brands/:brandId` | `catalog.manage` | Update/deactivate a brand |
+| 13 | `GET /api/admin/catalog/tax-rates` | `catalog.read` | Paginated tax-rate list |
+| 14 | `GET /api/admin/catalog/tax-rates/:taxRateId` | `catalog.read` | Tax-rate detail |
+| 15 | `POST /api/admin/catalog/tax-rates` | `catalog.manage` | Create a tax rate |
+| 16 | `PATCH /api/admin/catalog/tax-rates/:taxRateId` | `catalog.manage` | Update/deactivate a tax rate |
+
+There are no DELETE routes for these four master-data types. Unknown DELETE
+requests receive the normal JSON `404` response.
+
+No business reference rows such as `EACH`, `KG`, `LITRE`, or `VAT` are seeded
+automatically. Those values are organization policy and must be created
+deliberately through the authorized catalog API.
+
+## Reference catalog behavior
+
+### Units of measure
+
+Units expose `unitOfMeasureId`, `unitCode`, `unitName`, `symbol`,
+`allowsFraction`, and timestamps. Codes are trimmed and uppercased; names and
+symbols retain meaningful display casing. `allowsFraction` defaults to `false`
+and accepts only a JSON Boolean.
+
+Changing `allowsFraction` from `true` to `false` is rejected with `409` whenever
+any product variant using the unit is fractional, regardless of that variant's
+status. Unit rows are never deleted because variants and packages may reference
+them.
+
+### Hierarchical categories
+
+Categories expose their optional `parentCategoryId` but not the generated
+`parentScopeId`. Codes are globally unique; names are unique within their parent
+or the root scope. An active category may only have an active parent.
+
+All creates and hierarchy-changing updates share a category-hierarchy lock and
+transactional row locks. Parent ancestry is validated before writing, preventing
+self-parenting, two-node cycles, deep cycles, and competing re-parent operations
+from committing a cycle.
+
+Deactivation is rejected with `409` if the subtree contains an active descendant
+or an active product attached to the target or any descendant. Nothing is
+cascade-deactivated; administrators must explicitly reconcile dependencies.
+
+### Brands
+
+Brand codes and names are independently globally unique. Descriptions are
+nullable and nonblank when supplied. Brands use `isActive` rather than deletion.
+Deactivation is rejected while any active product references the brand; products
+are never modified implicitly. Reactivation is allowed.
+
+### Tax rates
+
+Tax codes are globally unique; tax names intentionally are not. `ratePercent` is
+a decimal string from `0.0000` through `100.0000` with at most four fractional
+digits. Scientific notation, binary floating-point numbers, negative values, and
+out-of-range values are rejected. API and audit output preserve MySQL's
+four-decimal string representation.
+
+`isInclusive` and `isActive` are strict JSON Booleans. A tax rate cannot be
+deactivated while an active product references it, but changing the current
+percentage or inclusive setting is allowed because future transaction rows store
+their own tax snapshots.
+
+### Catalog pagination and filters
+
+All four collection routes use the standard page `1`, limit `20`, maximum `100`
+contract and deterministic ordering. Supported filters are:
+
+| Collection | Filters |
+| --- | --- |
+| units | `search`, `allowsFraction` |
+| categories | `search`, `isActive`, `parentCategoryId` |
+| brands | `search`, `isActive` |
+| tax rates | `search`, `isActive`, `isInclusive` |
+
+For categories, `parentCategoryId=null` selects roots, a positive BIGINT string
+selects one parent, and omission applies no parent filter. Search values and all
+other filter values are parameterized; ordering is fixed in repository code.
+
+### Catalog audit and transaction policy
+
+Successful catalog changes write one of
+`UNIT_OF_MEASURE_CREATED`, `UNIT_OF_MEASURE_UPDATED`, `CATEGORY_CREATED`,
+`CATEGORY_UPDATED`, `BRAND_CREATED`, `BRAND_UPDATED`, `TAX_RATE_CREATED`, or
+`TAX_RATE_UPDATED`. The safe before/after state and actor/request context are
+written on the same connection and in the same transaction as the master-data
+change. A failed change therefore creates neither catalog state nor an audit row.
+
+Dependency-changing operations lock the reference row and relevant dependent
+rows. Future product/variant services must follow the same reference-first lock
+ordering and revalidate current reference state; direct SQL writers that bypass
+the service layer are outside this application-level invariant.
 
 ## Branch administration
 
@@ -599,7 +746,7 @@ Duplicate IDs are rejected. The repository locks the role, verifies every ID,
 preserves bridge rows already present, deletes removed `role_permissions`, inserts
 new ones, and audits sorted before/after permission codes in one transaction. An
 empty array intentionally removes every permission from an ordinary role. It is
-rejected for `SYSTEM_ADMIN` unless all ten canonical Phase 4 permissions remain.
+rejected for `SYSTEM_ADMIN` unless all 16 canonical permissions remain.
 
 ## Global and branch-scoped user roles
 
@@ -712,7 +859,7 @@ Run the complete suite against the configured local/development database:
 npm test
 ```
 
-The Phase 4 validation run covers:
+The complete Phase 2-5A validation run covers:
 
 - Phase 2 health, database health, JSON 404, and graceful SIGINT/SIGTERM;
 - Phase 3 login, JWT enforcement, password-change gating, current account state,
@@ -729,21 +876,28 @@ The Phase 4 validation run covers:
 - global/branch user-role grants, linked employee assignment validation,
   server-owned `assigned_by_user_id`, duplicate grant, revoke, and self-revoke
   protection;
-- expected secret-free audit events and pagination validation; and
-- exact cleanup of uniquely identified `TEST_*` branches, employees,
-  assignments, users, roles, bridges, and audit rows.
+- expected secret-free audit events and pagination validation;
+- Phase 5A global catalog authorization, all 16 reference endpoints, strict
+  validation, bounded pagination, exact filters, category-cycle concurrency,
+  dependency-safe lifecycle changes, decimal-safe tax rates, and all eight
+  catalog audit actions; and
+- exact reverse-FK cleanup of uniquely identified `TEST_*` access-control,
+  organization, product-dependency, reference-catalog, bridge, and audit rows.
 
 Canonical seed permissions and `SYSTEM_ADMIN` configuration may remain because
 they are intentional application configuration rather than test fixtures. Tests
-must never drop/recreate the database or touch catalog, inventory, purchasing,
-POS, sales, returns, payment, transfer, or stock-count data.
+must never drop/recreate the database or touch unrelated development data.
+Phase 5A creates only uniquely identified reference rows and the minimum direct
+product/variant dependency fixtures, then removes them in reverse FK order; it
+does not touch inventory, purchasing, POS, sales, returns, payments, transfers,
+or stock-count data.
 
-The latest local validation on 2026-09-06 passed all 33 discovered tests: 14
-Phase 4 suite/test entries and 19 retained Phase 2/3 suite/test entries. It
-confirmed both graceful-shutdown signals, the active
-`supermarket_management` database with 54 tables, all ten canonical permissions,
-one `SYSTEM_ADMIN` role with all ten canonical mappings, and zero remaining
-temporary Phase 3/4 branch, employee, role, user, bridge, or audit fixtures.
+The latest local validation on 2026-09-07 passed all 43 discovered tests: 14
+Phase 4 suite/test entries, 19 retained Phase 2/3 suite/test entries, and 10
+Phase 5A suite/test entries. It confirmed both graceful-shutdown signals, the
+active `supermarket_management` database with 54 tables, all 16 canonical
+permissions, one `SYSTEM_ADMIN` role with all 16 canonical mappings, and zero
+remaining temporary Phase 3/4/5A fixtures.
 Results are environment-specific, so run `npm test` again after relevant code,
 configuration, or database changes.
 
@@ -836,6 +990,7 @@ revocation/session design.
 operating-system metadata. It keeps `.env.example`, source, tests, scripts, and
 both database documents trackable.
 
-Phase 4 stops after organization, staff, and access administration. Phase 5 must
-not begin until Phase 4 implementation, MySQL integration results, fixture
-cleanup, documentation, and security behavior are reviewed and approved.
+Phase 5A stops after shared reference-catalog administration. Phase 5B product,
+variant, package, and barcode work must not begin until this implementation,
+MySQL integration evidence, fixture cleanup, documentation, and concurrency
+rules are reviewed and approved.

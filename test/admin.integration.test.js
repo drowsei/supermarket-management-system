@@ -835,15 +835,24 @@ test(
         const firstRun = await runNodeScript('scripts/seed-access-control.js');
         assert.equal(firstRun.code, 0, firstRun.stderr);
         assert.equal(firstRun.signal, null);
-        assert.match(firstRun.stdout, /10 canonical permissions/);
+        assert.match(
+          firstRun.stdout,
+          new RegExp(`${ACCESS_CONTROL_PERMISSIONS.length} canonical permissions`),
+        );
         assertNoSecretMaterial(firstRun, fixture);
         const firstSnapshot = await canonicalSeedSnapshot();
 
-        assert.equal(firstSnapshot.permissions.length, 10);
+        assert.equal(
+          firstSnapshot.permissions.length,
+          ACCESS_CONTROL_PERMISSIONS.length,
+        );
         assert.equal(firstSnapshot.roles.length, 1);
         assert.equal(firstSnapshot.roles[0].roleCode, SYSTEM_ADMIN_ROLE.code);
         assert.equal(firstSnapshot.roles[0].roleName, SYSTEM_ADMIN_ROLE.name);
-        assert.equal(firstSnapshot.mappings.length, 10);
+        assert.equal(
+          firstSnapshot.mappings.length,
+          ACCESS_CONTROL_PERMISSIONS.length,
+        );
 
         const secondRun = await runNodeScript('scripts/seed-access-control.js');
         assert.equal(secondRun.code, 0, secondRun.stderr);

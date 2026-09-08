@@ -56,6 +56,36 @@ const ACCESS_CONTROL_PERMISSIONS = Object.freeze(
       description:
         'Assign and revoke global or branch-scoped role grants for users.',
     },
+    {
+      code: 'catalog.read',
+      name: 'Read Catalog',
+      description: 'View shared reference catalog configuration.',
+    },
+    {
+      code: 'catalog.manage',
+      name: 'Manage Catalog',
+      description: 'Create and update shared reference catalog configuration.',
+    },
+    {
+      code: 'products.read',
+      name: 'Read Products',
+      description: 'View products, variants, packages, and barcodes.',
+    },
+    {
+      code: 'products.manage',
+      name: 'Manage Products',
+      description: 'Create and update products, variants, packages, and barcodes.',
+    },
+    {
+      code: 'pricing.read',
+      name: 'Read Pricing',
+      description: 'View branch pricing configuration.',
+    },
+    {
+      code: 'pricing.manage',
+      name: 'Manage Pricing',
+      description: 'Create and update branch pricing configuration.',
+    },
   ].map((permission) => Object.freeze(permission)),
 );
 
