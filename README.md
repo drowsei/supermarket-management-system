@@ -1,22 +1,23 @@
 # Supermarket Management System
 
 A production-oriented, multi-branch supermarket management system built in
-reviewed phases. Phase 5B adds the secured product-master API on top of the
-approved 54-table database, the Phase 5A reference catalog, and the completed
-Phase 2-4 foundation.
+reviewed phases. Phase 5C adds branch-specific price configuration and
+effective-price resolution on top of the approved 54-table database, the Phase
+5A reference catalog, the Phase 5B product master, and the completed Phase 2-4
+foundation.
 
-The current API can operate products, sellable/stockable variants, unit-conversion
-packages, case-sensitive barcodes, units of measure, hierarchical categories,
-brands, and tax rates, as well as the existing organization and access records.
-It retains the Phase 2 health behavior, Phase 3 authentication/authorization,
-and Phase 4 organization administration.
+The current API can configure prices per branch and resolve the currently
+effective variant or package price. It also operates products,
+sellable/stockable variants, unit-conversion packages, case-sensitive barcodes,
+units of measure, hierarchical categories, brands, tax rates, and the existing
+organization and access records. It retains all Phase 2-5B behavior.
 
-Phases 5A and 5B do **not** redesign the database. The approved
+Phases 5A, 5B, and 5C do **not** redesign the database. The approved
 [`database/schema.sql`](database/schema.sql) and detailed
 [`database/README.md`](database/README.md) remain the authority for the existing
 54 tables.
 
-## Phase 5A and Phase 5B purpose and boundaries
+## Phase 5A, Phase 5B, and Phase 5C purpose and boundaries
 
 Reference catalog records describe shared business concepts that products will
 reference later. They are organization-wide configuration, not branch stock,
@@ -46,11 +47,20 @@ Phase 5B builds on those references and includes:
 - global authorization, bounded lists, transaction-bound audit events, and
   concurrency-safe row locking across all four resources.
 
-Phase 5A and Phase 5B are complete at the database-backed product-master
-boundary described here. Phase 5C has not started: there is no branch pricing or
-effective-price resolver. Suppliers, customers, inventory, purchasing, POS,
-sales, reports, frontend, Postman, and Phase 6 work remain intentionally
-excluded.
+Phase 5C builds on the product master and includes:
+
+- one variant-price configuration per branch and variant;
+- one package-price configuration per branch and package;
+- branch-aware `pricing.read` and `pricing.manage` authorization;
+- exact, time-aware effective variant and package price resolution;
+- idempotent, concurrency-safe PUT operations with transaction-bound audits;
+  and
+- explicit verification that pricing never creates stock, lot, or stock-ledger
+  state.
+
+Phase 5C is complete at the pricing-configuration boundary described here.
+Suppliers, customers, inventory operations, purchasing, POS/checkout, sales,
+reports, frontend, Postman, and Phase 6 work remain intentionally excluded.
 
 ## Technology stack
 
@@ -92,8 +102,9 @@ route
   inserts.
 
 All `/api/admin` routes pass through `authenticate` and
-`requirePasswordChangeCompleted` before their endpoint-specific
-`requirePermission(...)` check. A role name never bypasses authorization.
+`requirePasswordChangeCompleted`. Organization-wide administration uses
+`requirePermission(...)`; Phase 5C pricing uses `requireBranchPermission(...)`
+with the URL branch. A role name never bypasses authorization.
 
 ## Project structure
 
@@ -114,8 +125,11 @@ supermarket-management-system/
 │   ├── controllers/
 │   │   ├── auth.controller.js
 │   │   ├── brand.controller.js
+│   │   ├── branchPackagePrice.controller.js
 │   │   ├── branch.controller.js
+│   │   ├── branchVariantPrice.controller.js
 │   │   ├── category.controller.js
+│   │   ├── effectivePrice.controller.js
 │   │   ├── employee.controller.js
 │   │   ├── product.controller.js
 │   │   ├── productBarcode.controller.js
@@ -129,14 +143,18 @@ supermarket-management-system/
 │   │   ├── auth.middleware.js
 │   │   ├── authorization.middleware.js
 │   │   ├── errorHandler.js
-│   │   └── loginRateLimiter.js
+│   │   ├── loginRateLimiter.js
+│   │   └── pricingBranch.middleware.js
 │   ├── repositories/
 │   │   ├── accessControlSeed.repository.js
 │   │   ├── audit.repository.js
 │   │   ├── auth.repository.js
 │   │   ├── brand.repository.js
+│   │   ├── branchPackagePrice.repository.js
 │   │   ├── branch.repository.js
+│   │   ├── branchVariantPrice.repository.js
 │   │   ├── category.repository.js
+│   │   ├── effectivePrice.repository.js
 │   │   ├── employee.repository.js
 │   │   ├── product.repository.js
 │   │   ├── productBarcode.repository.js
@@ -164,6 +182,11 @@ supermarket-management-system/
 │   │   │   │   ├── productBarcode.routes.js
 │   │   │   │   ├── productPackage.routes.js
 │   │   │   │   └── productVariant.routes.js
+│   │   │   ├── pricing/
+│   │   │   │   ├── effectivePrice.routes.js
+│   │   │   │   ├── index.js
+│   │   │   │   ├── packagePrice.routes.js
+│   │   │   │   └── variantPrice.routes.js
 │   │   │   ├── role.routes.js
 │   │   │   └── user.routes.js
 │   │   ├── auth.routes.js
@@ -172,8 +195,11 @@ supermarket-management-system/
 │   │   ├── auth.service.js
 │   │   ├── authorization.service.js
 │   │   ├── brand.service.js
+│   │   ├── branchPackagePrice.service.js
 │   │   ├── branch.service.js
+│   │   ├── branchVariantPrice.service.js
 │   │   ├── category.service.js
+│   │   ├── effectivePrice.service.js
 │   │   ├── employee.service.js
 │   │   ├── product.service.js
 │   │   ├── productBarcode.service.js
@@ -187,6 +213,7 @@ supermarket-management-system/
 │   │   ├── auditContext.js
 │   │   ├── barcode.js
 │   │   ├── databaseError.js
+│   │   ├── exactDecimal.js
 │   │   ├── httpError.js
 │   │   ├── jwt.js
 │   │   ├── password.js
@@ -209,6 +236,10 @@ supermarket-management-system/
 │   │   │   ├── productBarcode.validator.js
 │   │   │   ├── productPackage.validator.js
 │   │   │   └── productVariant.validator.js
+│   │   ├── pricing/
+│   │   │   ├── branchPackagePrice.validator.js
+│   │   │   ├── branchVariantPrice.validator.js
+│   │   │   └── common.validator.js
 │   │   └── auth.validator.js
 │   ├── app.js
 │   └── server.js
@@ -216,6 +247,7 @@ supermarket-management-system/
 │   ├── admin.integration.test.js
 │   ├── auth.integration.test.js
 │   ├── catalogReference.integration.test.js
+│   ├── pricing.integration.test.js
 │   └── productCatalog.integration.test.js
 ├── .env
 ├── .env.example
@@ -225,7 +257,8 @@ supermarket-management-system/
 └── README.md
 ```
 
-`productCatalog.integration.test.js` exercises Phase 5B against MySQL,
+`pricing.integration.test.js` exercises Phase 5C against MySQL,
+`productCatalog.integration.test.js` retains Phase 5B coverage,
 `catalogReference.integration.test.js` retains Phase 5A coverage,
 `admin.integration.test.js` retains Phase 4 coverage, and
 `auth.integration.test.js` retains the detailed Phase 2 and Phase 3 regression
@@ -344,9 +377,17 @@ canonical permission. Re-running the command produces the same logical
 configuration and does not duplicate rows.
 
 Phase 5A uses `catalog.read` and `catalog.manage`; Phase 5B uses `products.read`
-and `products.manage`. All four are global administration permissions. The two
-pricing permissions remain reserved for Phase 5C and are not used by any route
-yet.
+and `products.manage`. Those four are global administration permissions. Phase
+5C uses `pricing.read` and `pricing.manage` as branch-aware permissions. For the
+permission-scope check, a global pricing grant
+(`user_roles.branch_id IS NULL`) can satisfy the required permission for any
+branch, while a branch-scoped grant can satisfy it only for its exact branch.
+The employee-assignment check is a separate access gate: whenever the user is
+linked to an employee, the employee must also have a current active assignment
+to the target branch, regardless of whether the qualifying permission came from
+a global or branch-scoped grant. An unlinked system user is not subject to this
+employee-assignment gate. Catalog or product permissions never imply pricing
+access.
 
 If `SYSTEM_ADMIN` already exists but is inactive, the seed deliberately leaves
 it inactive and prints a warning instead of silently reversing an emergency or
@@ -454,9 +495,13 @@ Supported filters:
 | product variants | `search`, `status`, `unitOfMeasureId`, `isFractional`, `lotTrackingMode`, `requiresExpiryDate` |
 | product packages | `search`, `status`, `packageUnitOfMeasureId`, `isBaseUnit`, `isPurchasable`, `isSellable` |
 | product barcodes | `search`, `barcodeType`, `productPackageId`, `isPrimary` |
+| branch variant prices | `search`, `isActive`, `effectiveStatus` |
+| branch package prices | `search`, `isActive`, `effectiveStatus` |
 
 Ordering is code-controlled and includes stable ID tie-breakers. Search and
 filters use parameterized values rather than client-supplied SQL fragments.
+Pricing `effectiveStatus` accepts `EFFECTIVE`, `FUTURE`, or `INACTIVE` and is
+evaluated against one database clock expression per query.
 
 ### Status codes
 
@@ -598,6 +643,110 @@ and barcode resource routes resolve their own owning chain internally. Parent
 ownership remains explicit and validated on product-variant, variant-package,
 and variant-barcode collection/create routes. The exact barcode lookup route is
 registered before the dynamic `:barcodeId` route.
+
+## Phase 5C endpoints and required permissions
+
+Pricing configuration is branch-specific. Every route inherits authentication
+and required-password-change enforcement from `/api/admin`, then checks its
+permission against `:branchId` using the branch-aware authorization path. A
+global or exact-branch grant may satisfy the permission scope, but every
+employee-linked user must independently have a current active assignment to the
+target branch. Unlinked system users do not require an employee assignment.
+
+| # | Method and path | Required permission | Purpose |
+| ---: | --- | --- | --- |
+| 1 | `GET /api/admin/branches/:branchId/prices/variants` | `pricing.read` for that branch | Paginated branch variant-price configurations |
+| 2 | `GET /api/admin/branches/:branchId/prices/variants/:variantId` | `pricing.read` for that branch | One branch/variant configuration row |
+| 3 | `PUT /api/admin/branches/:branchId/prices/variants/:variantId` | `pricing.manage` for that branch | Create or replace the branch/variant configuration |
+| 4 | `GET /api/admin/branches/:branchId/prices/packages` | `pricing.read` for that branch | Paginated branch package-price configurations |
+| 5 | `GET /api/admin/branches/:branchId/prices/packages/:packageId` | `pricing.read` for that branch | One branch/package configuration row |
+| 6 | `PUT /api/admin/branches/:branchId/prices/packages/:packageId` | `pricing.manage` for that branch | Create or replace the branch/package configuration |
+| 7 | `GET /api/admin/branches/:branchId/prices/effective/variants/:variantId` | `pricing.read` for that branch | Resolve the variant's current effective price |
+| 8 | `GET /api/admin/branches/:branchId/prices/effective/packages/:packageId` | `pricing.read` for that branch | Resolve the package's current effective price |
+
+These are the exact eight Phase 5C routes. There are no aliases and no pricing
+DELETE route. Send `isActive: false` through PUT to disable an override while
+preserving its configuration row.
+
+## Branch pricing behavior
+
+### Configuration rows and PUT
+
+The approved composite primary keys enforce at most one row per branch/variant
+and one row per branch/package. A first PUT creates that row; later PUTs replace
+its three business values in the same row. It does not create history rows. GET
+detail describes only this branch-specific configuration and returns `404` when
+the branch and item exist but the configuration does not. Defaults and derived
+prices are returned only by the `/effective/...` endpoints.
+
+Both PUT bodies contain exactly:
+
+```json
+{
+  "sellingPrice": "12.5000",
+  "effectiveFrom": "2026-09-09T08:00:00.000000Z",
+  "isActive": true
+}
+```
+
+`sellingPrice` is a non-negative decimal string within `DECIMAL(19,4)` and is
+normalized to four places. JavaScript numbers, signs, exponent notation,
+excess scale, and out-of-range values are rejected. `isActive` is a strict JSON
+Boolean. `effectiveFrom` is a strict UTC timestamp in
+`YYYY-MM-DDTHH:mm:ss[.ffffff]Z` form; future values are valid.
+`updatedByEmployeeId` is never accepted from the client. It is derived from the
+authenticated user's employee link, or stored as `NULL` for a valid system user.
+
+A PUT whose persisted business values are already identical returns `200` with
+the current row, preserves its updater, and emits no misleading update audit.
+Concurrent PUTs lock in the existing product hierarchy order and serialize on
+the branch/item rows, leaving exactly one complete committed request state.
+
+### Effective-price precedence
+
+Variant resolution uses this fixed order:
+
+1. an active branch/variant row whose `effectiveFrom` is due — source
+   `BRANCH_VARIANT`;
+2. otherwise `product_variants.default_selling_price` — source
+   `VARIANT_DEFAULT`.
+
+Package resolution uses this fixed order:
+
+1. an active, due branch/package row — source `BRANCH_PACKAGE`;
+2. otherwise a non-null package default — source `PACKAGE_DEFAULT`;
+3. otherwise the effective variant price multiplied by
+   `conversion_to_base_quantity` — source `DERIVED_FROM_VARIANT`.
+
+The source vocabulary is limited to `BRANCH_VARIANT`, `VARIANT_DEFAULT`,
+`BRANCH_PACKAGE`, `PACKAGE_DEFAULT`, and `DERIVED_FROM_VARIANT`. Each resolver
+captures `UTC_TIMESTAMP(6)` once in its database query, so a request cannot
+cross an effective-time boundary between separate clock reads.
+
+Derived package multiplication uses scaled `BigInt`: four-place money times a
+six-place conversion, followed by deterministic round-half-up to four monetary
+places. No binary floating-point calculation is used. Derived responses also
+identify the effective variant price/source and the conversion so the result is
+explainable.
+
+A future PUT replaces the only override row. Until its UTC time arrives, that
+override is ignored and the normal fallback applies. Multiple scheduled rows,
+price history, promotion rules, tax-at-checkout calculation, and automatic
+activation jobs are outside Phase 5C.
+
+### Audit and the stock boundary
+
+Changed PUTs write one audit row in the same transaction using
+`BRANCH_VARIANT_PRICE_CREATED`, `BRANCH_VARIANT_PRICE_UPDATED`,
+`BRANCH_PACKAGE_PRICE_CREATED`, or `BRANCH_PACKAGE_PRICE_UPDATED`. Create
+snapshots use `beforeValues: null`; updates capture safe before and after data.
+GETs, effective reads, failed PUTs, and no-op PUTs do not write audit rows.
+
+Pricing is configuration only. These endpoints read/write
+`branch_variant_prices` and `branch_package_prices`; they never create or move
+stock and never create `branch_inventory`, `inventory_lots`, or
+`inventory_transactions` rows. Inventory and checkout workflows remain future
+phases.
 
 ## Product-master behavior
 
@@ -1055,7 +1204,7 @@ Run the complete suite against the configured local/development database:
 npm test
 ```
 
-The complete Phase 2-5B validation run covers:
+The complete Phase 2-5C validation run covers:
 
 - Phase 2 health, database health, JSON 404, and graceful SIGINT/SIGTERM;
 - Phase 3 login, JWT enforcement, password-change gating, current account state,
@@ -1076,33 +1225,43 @@ The complete Phase 2-5B validation run covers:
 - Phase 5A global catalog authorization, all 16 reference endpoints, strict
   validation, bounded pagination, exact filters, category-cycle concurrency,
   dependency-safe lifecycle changes, decimal-safe tax rates, and all eight
-  catalog audit actions; and
+  catalog audit actions;
 - Phase 5B global product authorization, all 18 product-master endpoints, exact
   decimal handling, collection ownership and direct-resource resolution,
   active-reference and active-base lifecycle rules, GTIN/UPC validation, exact
   case-sensitive lookup, controlled barcode deletion, package/barcode history
   stability, PATCH-based primary switching, and conflicting-operation
-  final-state checks; and
+  final-state checks;
+- Phase 5C branch-aware pricing authorization, all eight locked routes,
+  one-row PUT semantics, strict UTC and exact-money validation, all five
+  effective-price sources, scaled-`BigInt` derived prices, no-op and failed-write
+  audit suppression, concurrency final states, and zero inventory side effects;
+  and
 - exact reverse-FK cleanup of uniquely identified `TEST_*` access-control,
-  organization, product-dependency, reference-catalog, bridge, and audit rows.
+  organization, product-dependency, reference-catalog, pricing, bridge, and
+  audit rows.
 
 Canonical seed permissions and `SYSTEM_ADMIN` configuration may remain because
 they are intentional application configuration rather than test fixtures. Tests
 must never drop/recreate the database or touch unrelated development data.
 Phase 5A creates only uniquely identified reference rows and direct dependency
 fixtures. Phase 5B creates uniquely identified product-master rows and only the
-minimum zero-balance/history rows needed to verify immutability, then removes
-them in reverse FK order. Neither suite operates real development records or
-implements inventory, purchasing, POS, sales, returns, payments, transfers, or
-stock-count business workflows.
+minimum zero-balance/history rows needed to verify immutability. Phase 5C creates
+isolated organization/product/pricing prerequisites directly in SQL, exercises
+the pricing API, verifies no stock state was created, and removes everything in
+reverse FK order. No suite operates real development records or implements
+inventory, purchasing, POS, sales, returns, payments, transfers, or stock-count
+business workflows.
 
-The latest local validation on 2026-09-08 passed all 52 discovered test entries:
-the 43 retained Phase 2-5A entries plus 9 Phase 5B entries. It confirmed both
+The latest local validation on 2026-09-09 passed all 58 discovered test entries:
+the 52 retained Phase 2-5B entries plus 6 Phase 5C entries. It confirmed both
 graceful-shutdown signals, MySQL 8.0.46, the active
 `supermarket_management` database with 54 tables, all 16 canonical permissions,
 one canonical `SYSTEM_ADMIN` role with all 16 mappings, and zero remaining
-temporary Phase 3/4/5A/5B fixtures. Results are environment-specific, so run
-`npm test` again after relevant code, configuration, or database changes.
+temporary Phase 3/4/5A/5B/5C fixtures. The full run completed with 58 passed, 0
+failed, 0 skipped, and 0 cancelled in 17,969.771555 ms. Results are
+environment-specific, so run `npm test` again after relevant code,
+configuration, or database changes.
 
 Quick Phase 2 smoke checks after startup:
 
@@ -1195,6 +1354,6 @@ both database documents trackable.
 
 Phase 5A stops after shared reference-catalog administration. Phase 5B stops
 after organization-wide product, variant, package, and barcode administration.
-Phase 5C branch pricing and effective-price resolution must not begin until this
-implementation, MySQL integration evidence, fixture cleanup, documentation, and
-concurrency rules are reviewed and approved.
+Phase 5C stops after branch price configuration and read-only effective-price
+resolution. Phase 6 inventory, purchasing, checkout, and other operational work
+has not started and must wait for review and approval.
