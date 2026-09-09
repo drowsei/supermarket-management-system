@@ -215,7 +215,7 @@ async function createFixture(fixture) {
     const permissionCodes = ACCESS_CONTROL_PERMISSIONS.map(
       (permission) => permission.code,
     );
-    assert.equal(permissionCodes.length, 16);
+    assert.equal(permissionCodes.length, 18);
     const [permissionRows] = await connection.execute(
       `SELECT CAST(permission_id AS CHAR) AS permissionId,
               permission_code AS permissionCode
@@ -1480,8 +1480,8 @@ test(
              AND p.permission_code IN (${placeholders(canonicalCodes)})`,
           [SYSTEM_ADMIN_ROLE.code, ...canonicalCodes],
         );
-        assert.equal(Number(permissionRows[0].count), 16);
-        assert.equal(Number(mappingRows[0].count), 16);
+        assert.equal(Number(permissionRows[0].count), 18);
+        assert.equal(Number(mappingRows[0].count), 18);
       });
     } finally {
       const cleanupErrors = [];

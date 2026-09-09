@@ -58,6 +58,16 @@ const NEW_PERMISSION_METADATA = Object.freeze([
     name: 'Manage Pricing',
     description: 'Create and update branch pricing configuration.',
   },
+  {
+    code: 'suppliers.read',
+    name: 'Read Suppliers',
+    description: 'View suppliers and supplier catalog configuration.',
+  },
+  {
+    code: 'suppliers.manage',
+    name: 'Manage Suppliers',
+    description: 'Create and update suppliers and supplier catalog configuration.',
+  },
 ]);
 
 function requireIntegrationEnvironment() {
@@ -948,9 +958,9 @@ async function verifyFixtureCleanup(fixture) {
     assert.equal(Number(auditRows[0].count), 0);
 
     const seed = await canonicalSeedSnapshot();
-    assert.equal(seed.permissions.length, 16);
+    assert.equal(seed.permissions.length, 18);
     assert.equal(seed.roles.length, 1);
-    assert.equal(seed.mappings.length, 16);
+    assert.equal(seed.mappings.length, 18);
   } finally {
     connection.release();
   }
@@ -1092,12 +1102,12 @@ test(
       await t.test(
         'expands and seeds the canonical permission catalog idempotently',
         async () => {
-          assert.equal(ACCESS_CONTROL_PERMISSIONS.length, 16);
+          assert.equal(ACCESS_CONTROL_PERMISSIONS.length, 18);
           assert.equal(
             new Set(
               ACCESS_CONTROL_PERMISSIONS.map((permission) => permission.code),
             ).size,
-            16,
+            18,
           );
 
           for (const expectedPermission of NEW_PERMISSION_METADATA) {
@@ -1115,15 +1125,15 @@ test(
           );
           assert.equal(firstRun.code, 0, firstRun.stderr);
           assert.equal(firstRun.signal, null);
-          assert.match(firstRun.stdout, /16 canonical permissions/);
+          assert.match(firstRun.stdout, /18 canonical permissions/);
           const firstSnapshot = await canonicalSeedSnapshot();
-          assert.equal(firstSnapshot.permissions.length, 16);
+          assert.equal(firstSnapshot.permissions.length, 18);
           assert.equal(firstSnapshot.roles.length, 1);
           assert.equal(
             firstSnapshot.roles[0].roleCode,
             SYSTEM_ADMIN_ROLE.code,
           );
-          assert.equal(firstSnapshot.mappings.length, 16);
+          assert.equal(firstSnapshot.mappings.length, 18);
 
           const [customRows] = await pool.execute(
             `SELECT CAST(permission_id AS CHAR) AS permissionId

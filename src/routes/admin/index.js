@@ -6,6 +6,7 @@ import branchRouter from './branch.routes.js';
 import catalogRouter from './catalog/index.js';
 import employeeRouter from './employee.routes.js';
 import roleRouter, { permissionRouter } from './role.routes.js';
+import supplierRouter from './suppliers/index.js';
 import userRouter from './user.routes.js';
 
 const router = Router();
@@ -19,5 +20,6 @@ router.use('/users', userRouter);
 router.use('/roles', roleRouter);
 router.use('/permissions', permissionRouter);
 router.use('/catalog', catalogRouter);
+router.use('/suppliers', supplierRouter);
 
 export default router;

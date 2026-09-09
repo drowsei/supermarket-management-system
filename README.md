@@ -1,23 +1,23 @@
 # Supermarket Management System
 
 A production-oriented, multi-branch supermarket management system built in
-reviewed phases. Phase 5C adds branch-specific price configuration and
-effective-price resolution on top of the approved 54-table database, the Phase
-5A reference catalog, the Phase 5B product master, and the completed Phase 2-4
-foundation.
+reviewed phases. Phase 6 adds organization-wide supplier administration and
+supplier-specific variant/package purchasing configuration on top of the
+approved 54-table database and the completed Phase 2-5C foundation.
 
-The current API can configure prices per branch and resolve the currently
-effective variant or package price. It also operates products,
+The current API operates supplier masters and supplier catalog relationships,
+configures prices per branch, and resolves the currently effective variant or
+package price. It also operates products,
 sellable/stockable variants, unit-conversion packages, case-sensitive barcodes,
 units of measure, hierarchical categories, brands, tax rates, and the existing
-organization and access records. It retains all Phase 2-5B behavior.
+organization and access records. It retains all Phase 2-5C behavior.
 
-Phases 5A, 5B, and 5C do **not** redesign the database. The approved
+Phases 5A, 5B, 5C, and 6 do **not** redesign the database. The approved
 [`database/schema.sql`](database/schema.sql) and detailed
 [`database/README.md`](database/README.md) remain the authority for the existing
 54 tables.
 
-## Phase 5A, Phase 5B, and Phase 5C purpose and boundaries
+## Phase 5A through Phase 6 purpose and boundaries
 
 Reference catalog records describe shared business concepts that products will
 reference later. They are organization-wide configuration, not branch stock,
@@ -58,9 +58,22 @@ Phase 5C builds on the product master and includes:
 - explicit verification that pricing never creates stock, lot, or stock-ledger
   state.
 
-Phase 5C is complete at the pricing-configuration boundary described here.
-Suppliers, customers, inventory operations, purchasing, POS/checkout, sales,
-reports, frontend, Postman, and Phase 6 work remain intentionally excluded.
+Phase 6 builds on the product master and includes:
+
+- supplier master creation, lookup, filtering, and lifecycle updates;
+- supplier-to-variant relationships with supplier SKU, lead time, minimum
+  order quantity, and preferred-supplier configuration;
+- supplier-to-package relationships with supplier package SKU, minimum package
+  quantity, and active state;
+- global supplier permissions, transaction-bound audit, ownership checks, and
+  lock ordering compatible with Phase 5B; and
+- explicit verification that supplier configuration creates no stock,
+  purchasing, or receiving transactions.
+
+Phase 6 is complete at the supplier-configuration boundary described here.
+Customers, inventory operations, purchase-order and receiving workflows,
+POS/checkout, sales, reports, frontend, and Postman remain intentionally
+excluded. Phase 7 — Purchasing & Stock Receiving has not started.
 
 ## Technology stack
 
@@ -103,8 +116,9 @@ route
 
 All `/api/admin` routes pass through `authenticate` and
 `requirePasswordChangeCompleted`. Organization-wide administration uses
-`requirePermission(...)`; Phase 5C pricing uses `requireBranchPermission(...)`
-with the URL branch. A role name never bypasses authorization.
+`requirePermission(...)`, including every Phase 6 supplier route; Phase 5C
+pricing uses `requireBranchPermission(...)` with the URL branch. A role name
+never bypasses authorization.
 
 ## Project structure
 
@@ -136,6 +150,9 @@ supermarket-management-system/
 │   │   ├── productPackage.controller.js
 │   │   ├── productVariant.controller.js
 │   │   ├── role.controller.js
+│   │   ├── supplier.controller.js
+│   │   ├── supplierProduct.controller.js
+│   │   ├── supplierProductPackage.controller.js
 │   │   ├── taxRate.controller.js
 │   │   ├── unitOfMeasure.controller.js
 │   │   └── userAdmin.controller.js
@@ -162,6 +179,9 @@ supermarket-management-system/
 │   │   ├── productPackage.repository.js
 │   │   ├── productVariant.repository.js
 │   │   ├── role.repository.js
+│   │   ├── supplier.repository.js
+│   │   ├── supplierProduct.repository.js
+│   │   ├── supplierProductPackage.repository.js
 │   │   ├── taxRate.repository.js
 │   │   ├── unitOfMeasure.repository.js
 │   │   └── userAdmin.repository.js
@@ -188,6 +208,11 @@ supermarket-management-system/
 │   │   │   │   ├── packagePrice.routes.js
 │   │   │   │   └── variantPrice.routes.js
 │   │   │   ├── role.routes.js
+│   │   │   ├── suppliers/
+│   │   │   │   ├── index.js
+│   │   │   │   ├── supplier.routes.js
+│   │   │   │   ├── supplierProduct.routes.js
+│   │   │   │   └── supplierProductPackage.routes.js
 │   │   │   └── user.routes.js
 │   │   ├── auth.routes.js
 │   │   └── health.routes.js
@@ -206,6 +231,9 @@ supermarket-management-system/
 │   │   ├── productPackage.service.js
 │   │   ├── productVariant.service.js
 │   │   ├── role.service.js
+│   │   ├── supplier.service.js
+│   │   ├── supplierProduct.service.js
+│   │   ├── supplierProductPackage.service.js
 │   │   ├── taxRate.service.js
 │   │   ├── unitOfMeasure.service.js
 │   │   └── userAdmin.service.js
@@ -240,6 +268,11 @@ supermarket-management-system/
 │   │   │   ├── branchPackagePrice.validator.js
 │   │   │   ├── branchVariantPrice.validator.js
 │   │   │   └── common.validator.js
+│   │   ├── suppliers/
+│   │   │   ├── common.validator.js
+│   │   │   ├── supplier.validator.js
+│   │   │   ├── supplierProduct.validator.js
+│   │   │   └── supplierProductPackage.validator.js
 │   │   └── auth.validator.js
 │   ├── app.js
 │   └── server.js
@@ -248,7 +281,8 @@ supermarket-management-system/
 │   ├── auth.integration.test.js
 │   ├── catalogReference.integration.test.js
 │   ├── pricing.integration.test.js
-│   └── productCatalog.integration.test.js
+│   ├── productCatalog.integration.test.js
+│   └── supplierCatalog.integration.test.js
 ├── .env
 ├── .env.example
 ├── .gitignore
@@ -257,7 +291,8 @@ supermarket-management-system/
 └── README.md
 ```
 
-`pricing.integration.test.js` exercises Phase 5C against MySQL,
+`supplierCatalog.integration.test.js` exercises Phase 6 against MySQL,
+`pricing.integration.test.js` retains Phase 5C coverage,
 `productCatalog.integration.test.js` retains Phase 5B coverage,
 `catalogReference.integration.test.js` retains Phase 5A coverage,
 `admin.integration.test.js` retains Phase 4 coverage, and
@@ -349,7 +384,7 @@ Permissions are application-defined capabilities. A permission code is useful
 only because application routes check that exact code, so administrators cannot
 invent permission definitions through the HTTP API.
 
-The idempotent catalog contains 16 canonical Phase 4/5 permissions:
+The idempotent catalog contains 18 canonical Phase 4-6 permissions:
 
 | Permission code | Meaning |
 | --- | --- |
@@ -369,6 +404,8 @@ The idempotent catalog contains 16 canonical Phase 4/5 permissions:
 | `products.manage` | Create/update product master data and delete unused barcodes in Phase 5B |
 | `pricing.read` | View branch pricing configuration in Phase 5C |
 | `pricing.manage` | Create and update branch pricing configuration in Phase 5C |
+| `suppliers.read` | View supplier masters and supplier catalog configuration in Phase 6 |
+| `suppliers.manage` | Create and update supplier masters and supplier catalog configuration in Phase 6 |
 
 The seed inserts missing canonical permissions, reconciles their human-readable
 metadata, preserves unrelated permissions and roles, ensures the
@@ -388,6 +425,12 @@ to the target branch, regardless of whether the qualifying permission came from
 a global or branch-scoped grant. An unlinked system user is not subject to this
 employee-assignment gate. Catalog or product permissions never imply pricing
 access.
+
+Phase 6 uses `suppliers.read` for all supplier GET routes and
+`suppliers.manage` for all supplier writes. Supplier administration is global:
+only a global role grant (`user_roles.branch_id IS NULL`) satisfies these
+routes. A branch-scoped supplier grant does not satisfy them, and catalog,
+product, or pricing permissions do not imply supplier access.
 
 If `SYSTEM_ADMIN` already exists but is inactive, the seed deliberately leaves
 it inactive and prints a warning instead of silently reversing an emergency or
@@ -859,6 +902,127 @@ lifecycle or primary-barcode PATCH operations cannot violate their final-state
 invariants, and it keeps variant activation from racing an active base out of
 existence.
 
+## Phase 6 endpoints and required permissions
+
+Supplier configuration is organization-wide. Every route inherits authentication
+and required-password-change enforcement from `/api/admin`, then requires the
+named **global** supplier permission.
+
+| # | Method and path | Required permission | Purpose |
+| ---: | --- | --- | --- |
+| 1 | `GET /api/admin/suppliers` | `suppliers.read` | Paginated supplier list |
+| 2 | `GET /api/admin/suppliers/:supplierId` | `suppliers.read` | Supplier detail |
+| 3 | `POST /api/admin/suppliers` | `suppliers.manage` | Create a supplier |
+| 4 | `PATCH /api/admin/suppliers/:supplierId` | `suppliers.manage` | Update master/lifecycle fields |
+| 5 | `GET /api/admin/suppliers/:supplierId/products` | `suppliers.read` | Paginated supplier-to-variant relationships |
+| 6 | `POST /api/admin/suppliers/:supplierId/products` | `suppliers.manage` | Create a supplier-to-variant relationship |
+| 7 | `GET /api/admin/suppliers/:supplierId/products/:supplierProductId` | `suppliers.read` | One supplier-to-variant relationship |
+| 8 | `PATCH /api/admin/suppliers/:supplierId/products/:supplierProductId` | `suppliers.manage` | Update a supplier-to-variant relationship |
+| 9 | `GET /api/admin/suppliers/:supplierId/products/:supplierProductId/packages` | `suppliers.read` | Paginated packages for one supplier product |
+| 10 | `POST /api/admin/suppliers/:supplierId/products/:supplierProductId/packages` | `suppliers.manage` | Create a supplier-to-package relationship |
+| 11 | `GET /api/admin/suppliers/:supplierId/product-packages/:supplierProductPackageId` | `suppliers.read` | Resolve one supplier package directly |
+| 12 | `PATCH /api/admin/suppliers/:supplierId/product-packages/:supplierProductPackageId` | `suppliers.manage` | Update a supplier-to-package relationship |
+
+These are the exact 12 Phase 6 routes. There are no aliases or DELETE routes,
+and no purchase-order, receipt, procurement, or inventory route was added.
+
+## Supplier and supplier-catalog behavior
+
+### Frozen-schema interpretation and resource identity
+
+`suppliers` uses the surrogate `supplier_id` primary key. Its exposed business
+fields are `supplierCode`, `supplierName`, `contactName`, `email`, `phone`,
+`taxIdentifier`, the six address/location fields, `paymentTermsDays`, and
+`status`. Status is the strict schema enum `ACTIVE`, `INACTIVE`, or `BLOCKED`.
+Codes and the two-letter country code are trimmed and uppercased; meaningful
+display text retains its casing. The database uniquely enforces supplier code
+and each non-null tax identifier.
+
+`supplier_products` has no surrogate ID. Its primary key is
+`(supplier_id, product_variant_id)`, so the route's `supplierProductId` is the
+`product_variant_id` component within the URL supplier. Responses expose both
+names explicitly. The row stores the optional supplier SKU, preferred flag,
+optional lead-time days, and minimum order quantity. Supplier SKU is unique
+within its supplier; the generated unique preferred guard permits at most one
+preferred supplier for a variant across all suppliers.
+
+`supplier_product_packages` likewise has no surrogate ID. Its primary key is
+`(supplier_id, product_package_id)`, so `supplierProductPackageId` is the
+`product_package_id` component within the URL supplier. Its composite foreign
+keys require both an existing supplier/variant relationship and a package owned
+by that same variant. It stores the optional supplier package SKU, minimum
+package quantity, and active flag. Direct detail/update resolves and verifies
+the whole supplier → supplier product → supplier package chain; a cross-supplier
+or otherwise mismatched route returns `404` without exposing another supplier's
+configuration.
+
+Neither supplier catalog table contains a supplier cost column. Phase 6 does
+not invent one: purchase-item cost is a future Phase 7 transaction value and
+the approved purchase tables preserve that historical snapshot.
+
+### Lifecycle and exact-value rules
+
+Creating a supplier relationship requires an active supplier, parent product,
+and variant. Creating a supplier package also requires an active, purchasable
+package. Setting an existing relationship to preferred, or an existing package
+relationship to active, rechecks the same current lifecycle state while holding
+locks. Administrators may still clear a preferred flag, disable a package
+relationship, or correct non-identity metadata when retiring configuration.
+
+Changing a supplier to `INACTIVE` or `BLOCKED` does not cascade into
+`supplier_products`, `supplier_product_packages`, or historical purchase rows.
+The status itself is the current eligibility signal that the future Phase 7
+service must enforce before creating a purchase order. This lets a supplier be
+retired without destroying its catalog or history.
+
+`minimumOrderQuantity` and `minimumPackageQuantity` are positive exact
+`DECIMAL(15,3)` strings. JavaScript numbers, signs, exponent notation, excess
+scale, zero, and out-of-range values are rejected rather than rounded through
+binary floating point. `paymentTermsDays` and `leadTimeDays` follow the schema's
+unsigned-small-integer range, and Boolean fields require real JSON Booleans.
+Unknown body/query fields, client timestamps, and generated guard columns are
+not accepted.
+
+### Lists, history, no-op, and audit behavior
+
+All three Phase 6 collection forms use page `1`, limit `20`, maximum `100`,
+fixed parameterized filters, and deterministic ordering with an ID tie-breaker.
+Suppliers support `search` and `status`; supplier products support `search`,
+`productVariantId`, and `isPreferred`; supplier packages support `search`,
+`productPackageId`, and `isActive`.
+
+The relationship identity columns cannot be changed by PATCH. Existing purchase
+orders and items depend on supplier and variant/package identities but keep
+their own item, quantity, conversion, and cost snapshots; Phase 6 never rewrites
+those rows. The mutable supplier SKU, lead-time, minimum-quantity, preferred,
+and active values remain current purchasing configuration, not historical
+transaction facts. Physical deletion is deliberately unavailable.
+
+Successful changes emit exactly one of `SUPPLIER_CREATED`, `SUPPLIER_UPDATED`,
+`SUPPLIER_PRODUCT_CREATED`, `SUPPLIER_PRODUCT_UPDATED`,
+`SUPPLIER_PRODUCT_PACKAGE_CREATED`, or
+`SUPPLIER_PRODUCT_PACKAGE_UPDATED` in the same transaction as the mutation.
+Supplier audit rows have a null branch context and safe before/after snapshots.
+GETs, rejected writes, and PATCH requests with no persisted business change do
+not write audit rows or touch `updated_at`.
+
+### Locking and the operational boundary
+
+Supplier relationship writes preserve the Phase 5B order: product, variant,
+all packages for that variant, supplier, then supplier relationship rows.
+Rows at each level are locked deterministically. This makes duplicate creates,
+preferred-supplier changes, conflicting PATCH requests, and concurrent Phase 5B
+structural mutations serialize to a complete valid final state. Supplier-only
+master updates lock only the supplier root because they neither rewrite nor
+delete child configuration.
+
+Supplier configuration never inserts or updates `branch_inventory`, inventory
+lots, stock ledgers, purchase orders, or goods receipts. It records who may
+supply an already-defined variant or package; it does not order, receive, or
+move goods. Phase 7 must transactionally revalidate supplier/catalog lifecycle,
+copy historical purchasing snapshots, and post later receipts through the
+inventory ledger.
+
 ## Reference catalog behavior
 
 ### Units of measure
@@ -1091,7 +1255,7 @@ Duplicate IDs are rejected. The repository locks the role, verifies every ID,
 preserves bridge rows already present, deletes removed `role_permissions`, inserts
 new ones, and audits sorted before/after permission codes in one transaction. An
 empty array intentionally removes every permission from an ordinary role. It is
-rejected for `SYSTEM_ADMIN` unless all 16 canonical permissions remain.
+rejected for `SYSTEM_ADMIN` unless all 18 canonical permissions remain.
 
 ## Global and branch-scoped user roles
 
@@ -1204,7 +1368,7 @@ Run the complete suite against the configured local/development database:
 npm test
 ```
 
-The complete Phase 2-5C validation run covers:
+The complete Phase 2-6 validation run covers:
 
 - Phase 2 health, database health, JSON 404, and graceful SIGINT/SIGTERM;
 - Phase 3 login, JWT enforcement, password-change gating, current account state,
@@ -1236,6 +1400,10 @@ The complete Phase 2-5C validation run covers:
   one-row PUT semantics, strict UTC and exact-money validation, all five
   effective-price sources, scaled-`BigInt` derived prices, no-op and failed-write
   audit suppression, concurrency final states, and zero inventory side effects;
+- Phase 6 global supplier authorization, all 12 locked routes, supplier master
+  lifecycle, composite supplier-product/package ownership, exact minimum
+  quantities, preferred uniqueness, no-op and failed-write audit suppression,
+  cross-phase race serialization, and zero inventory/purchasing side effects;
   and
 - exact reverse-FK cleanup of uniquely identified `TEST_*` access-control,
   organization, product-dependency, reference-catalog, pricing, bridge, and
@@ -1247,19 +1415,20 @@ must never drop/recreate the database or touch unrelated development data.
 Phase 5A creates only uniquely identified reference rows and direct dependency
 fixtures. Phase 5B creates uniquely identified product-master rows and only the
 minimum zero-balance/history rows needed to verify immutability. Phase 5C creates
-isolated organization/product/pricing prerequisites directly in SQL, exercises
-the pricing API, verifies no stock state was created, and removes everything in
-reverse FK order. No suite operates real development records or implements
-inventory, purchasing, POS, sales, returns, payments, transfers, or stock-count
-business workflows.
+isolated organization/product/pricing prerequisites directly in SQL. Phase 6
+creates isolated access/product prerequisites, exercises supplier APIs, and
+verifies that neither inventory nor Phase 7 operational rows appear. Every suite
+removes its temporary rows in reverse foreign-key order. No suite operates real
+development records or implements inventory, purchase-order/receiving, POS,
+sales, returns, payments, transfers, or stock-count business workflows.
 
-The latest local validation on 2026-09-09 passed all 58 discovered test entries:
-the 52 retained Phase 2-5B entries plus 6 Phase 5C entries. It confirmed both
+The latest local validation on 2026-09-09 passed all 66 discovered test entries:
+the 58 retained Phase 2-5C entries plus 8 Phase 6 entries. It confirmed both
 graceful-shutdown signals, MySQL 8.0.46, the active
-`supermarket_management` database with 54 tables, all 16 canonical permissions,
-one canonical `SYSTEM_ADMIN` role with all 16 mappings, and zero remaining
-temporary Phase 3/4/5A/5B/5C fixtures. The full run completed with 58 passed, 0
-failed, 0 skipped, and 0 cancelled in 17,969.771555 ms. Results are
+`supermarket_management` database with 54 tables, all 18 canonical permissions,
+one canonical `SYSTEM_ADMIN` role with all 18 mappings, and zero remaining
+temporary Phase 3/4/5A/5B/5C/6 fixtures. The full run completed with 66 passed,
+0 failed, 0 skipped, and 0 cancelled in 34,997.500549 ms. Results are
 environment-specific, so run `npm test` again after relevant code,
 configuration, or database changes.
 
@@ -1355,5 +1524,6 @@ both database documents trackable.
 Phase 5A stops after shared reference-catalog administration. Phase 5B stops
 after organization-wide product, variant, package, and barcode administration.
 Phase 5C stops after branch price configuration and read-only effective-price
-resolution. Phase 6 inventory, purchasing, checkout, and other operational work
-has not started and must wait for review and approval.
+resolution. Phase 6 stops after supplier master and supplier catalog
+configuration. Phase 7 — Purchasing & Stock Receiving was not started and must
+wait for review and approval.

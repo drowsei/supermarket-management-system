@@ -196,6 +196,7 @@ export {
   parseBooleanQuery,
   parseCode,
   parseConversionDecimal,
+  parseExactDecimal,
   parseLotTrackingMode,
   parseMoneyDecimal,
   parseNullableIdQuery,

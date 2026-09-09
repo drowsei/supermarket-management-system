@@ -86,6 +86,16 @@ const ACCESS_CONTROL_PERMISSIONS = Object.freeze(
       name: 'Manage Pricing',
       description: 'Create and update branch pricing configuration.',
     },
+    {
+      code: 'suppliers.read',
+      name: 'Read Suppliers',
+      description: 'View suppliers and supplier catalog configuration.',
+    },
+    {
+      code: 'suppliers.manage',
+      name: 'Manage Suppliers',
+      description: 'Create and update suppliers and supplier catalog configuration.',
+    },
   ].map((permission) => Object.freeze(permission)),
 );
 
