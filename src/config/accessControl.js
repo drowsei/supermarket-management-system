@@ -96,6 +96,26 @@ const ACCESS_CONTROL_PERMISSIONS = Object.freeze(
       name: 'Manage Suppliers',
       description: 'Create and update suppliers and supplier catalog configuration.',
     },
+    {
+      code: 'purchasing.read',
+      name: 'Read Purchasing',
+      description: 'View branch purchase orders and their receiving progress.',
+    },
+    {
+      code: 'purchasing.manage',
+      name: 'Manage Purchasing',
+      description: 'Create and progress branch purchase orders.',
+    },
+    {
+      code: 'receiving.read',
+      name: 'Read Receiving',
+      description: 'View branch goods receipts and posted lot evidence.',
+    },
+    {
+      code: 'receiving.manage',
+      name: 'Manage Receiving',
+      description: 'Create, edit, cancel, and atomically post branch goods receipts.',
+    },
   ].map((permission) => Object.freeze(permission)),
 );
 

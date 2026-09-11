@@ -1,23 +1,24 @@
 # Supermarket Management System
 
 A production-oriented, multi-branch supermarket management system built in
-reviewed phases. Phase 6 adds organization-wide supplier administration and
-supplier-specific variant/package purchasing configuration on top of the
-approved 54-table database and the completed Phase 2-5C foundation.
+reviewed phases. Phase 7 adds branch purchase orders and atomic stock receiving
+on top of the approved 54-table database and completed Phase 2-6 foundation.
 
-The current API operates supplier masters and supplier catalog relationships,
-configures prices per branch, and resolves the currently effective variant or
-package price. It also operates products,
+The current API operates branch purchase orders, goods receipts, receipt-time
+lot allocation, and the stock-ledger posting required by receiving. It also
+operates supplier masters and supplier catalog relationships, configures prices
+per branch, and resolves the currently effective variant or package price. It
+operates products,
 sellable/stockable variants, unit-conversion packages, case-sensitive barcodes,
 units of measure, hierarchical categories, brands, tax rates, and the existing
-organization and access records. It retains all Phase 2-5C behavior.
+organization and access records. It retains all Phase 2-6 behavior.
 
-Phases 5A, 5B, 5C, and 6 do **not** redesign the database. The approved
+Phases 5A, 5B, 5C, 6, and 7 do **not** redesign the database. The approved
 [`database/schema.sql`](database/schema.sql) and detailed
 [`database/README.md`](database/README.md) remain the authority for the existing
 54 tables.
 
-## Phase 5A through Phase 6 purpose and boundaries
+## Phase 5A through Phase 7 purpose and boundaries
 
 Reference catalog records describe shared business concepts that products will
 reference later. They are organization-wide configuration, not branch stock,
@@ -70,10 +71,22 @@ Phase 6 builds on the product master and includes:
 - explicit verification that supplier configuration creates no stock,
   purchasing, or receiving transactions.
 
-Phase 6 is complete at the supplier-configuration boundary described here.
-Customers, inventory operations, purchase-order and receiving workflows,
+Phase 7 builds on supplier configuration and includes:
+
+- branch-scoped purchase-order and goods-receipt administration;
+- immutable product, package-conversion, description, cost, and currency
+  transaction snapshots with exact decimal calculations;
+- approval, partial-receipt, completion, and cancellation state transitions;
+- concurrency-safe over-receipt prevention and optional/required lot handling;
+- atomic receipt posting through `inventory_transactions`, including the
+  branch and lot balance projections; and
+- transaction-bound audits, duplicate-post protection, bounded lists, and
+  full Phase 2-6 regression coverage.
+
+Phase 7 is complete at the purchasing and stock-receiving boundary described
+here. General inventory administration, transfers, adjustments, customers,
 POS/checkout, sales, reports, frontend, and Postman remain intentionally
-excluded. Phase 7 — Purchasing & Stock Receiving has not started.
+excluded. Phase 8 — Inventory Engine has not started.
 
 ## Technology stack
 
@@ -107,7 +120,8 @@ route
 
 - Routes define URLs and their required application permission.
 - Middleware verifies the JWT, reloads the current user, enforces a completed
-  required password change, and checks the current global database permission.
+  required password change, and checks the current database permission and
+  scope.
 - Controllers validate HTTP parameters and bodies and shape responses.
 - Services apply workflows and translate expected conflicts into safe HTTP
   errors.
@@ -116,9 +130,10 @@ route
 
 All `/api/admin` routes pass through `authenticate` and
 `requirePasswordChangeCompleted`. Organization-wide administration uses
-`requirePermission(...)`, including every Phase 6 supplier route; Phase 5C
-pricing uses `requireBranchPermission(...)` with the URL branch. A role name
-never bypasses authorization.
+`requirePermission(...)`, including every Phase 6 supplier route. Phase 5C
+pricing and Phase 7 purchasing/receiving use
+`requireBranchPermission(...)` with the URL branch. A role name never bypasses
+authorization.
 
 ## Project structure
 
@@ -145,10 +160,12 @@ supermarket-management-system/
 │   │   ├── category.controller.js
 │   │   ├── effectivePrice.controller.js
 │   │   ├── employee.controller.js
+│   │   ├── goodsReceipt.controller.js
 │   │   ├── product.controller.js
 │   │   ├── productBarcode.controller.js
 │   │   ├── productPackage.controller.js
 │   │   ├── productVariant.controller.js
+│   │   ├── purchaseOrder.controller.js
 │   │   ├── role.controller.js
 │   │   ├── supplier.controller.js
 │   │   ├── supplierProduct.controller.js
@@ -161,6 +178,7 @@ supermarket-management-system/
 │   │   ├── authorization.middleware.js
 │   │   ├── errorHandler.js
 │   │   ├── loginRateLimiter.js
+│   │   ├── purchasingBranch.middleware.js
 │   │   └── pricingBranch.middleware.js
 │   ├── repositories/
 │   │   ├── accessControlSeed.repository.js
@@ -173,11 +191,15 @@ supermarket-management-system/
 │   │   ├── category.repository.js
 │   │   ├── effectivePrice.repository.js
 │   │   ├── employee.repository.js
+│   │   ├── goodsReceipt.repository.js
 │   │   ├── product.repository.js
 │   │   ├── productBarcode.repository.js
 │   │   ├── productCatalog.repository.js
 │   │   ├── productPackage.repository.js
 │   │   ├── productVariant.repository.js
+│   │   ├── purchaseOrder.repository.js
+│   │   ├── purchaseReceiptPosting.repository.js
+│   │   ├── purchasing.repository.js
 │   │   ├── role.repository.js
 │   │   ├── supplier.repository.js
 │   │   ├── supplierProduct.repository.js
@@ -202,6 +224,10 @@ supermarket-management-system/
 │   │   │   │   ├── productBarcode.routes.js
 │   │   │   │   ├── productPackage.routes.js
 │   │   │   │   └── productVariant.routes.js
+│   │   │   ├── purchasing/
+│   │   │   │   ├── goodsReceipt.routes.js
+│   │   │   │   ├── index.js
+│   │   │   │   └── purchaseOrder.routes.js
 │   │   │   ├── pricing/
 │   │   │   │   ├── effectivePrice.routes.js
 │   │   │   │   ├── index.js
@@ -226,10 +252,12 @@ supermarket-management-system/
 │   │   ├── category.service.js
 │   │   ├── effectivePrice.service.js
 │   │   ├── employee.service.js
+│   │   ├── goodsReceipt.service.js
 │   │   ├── product.service.js
 │   │   ├── productBarcode.service.js
 │   │   ├── productPackage.service.js
 │   │   ├── productVariant.service.js
+│   │   ├── purchaseOrder.service.js
 │   │   ├── role.service.js
 │   │   ├── supplier.service.js
 │   │   ├── supplierProduct.service.js
@@ -245,6 +273,7 @@ supermarket-management-system/
 │   │   ├── httpError.js
 │   │   ├── jwt.js
 │   │   ├── password.js
+│   │   ├── purchasingDecimal.js
 │   │   └── record.js
 │   ├── validators/
 │   │   ├── admin/
@@ -268,6 +297,10 @@ supermarket-management-system/
 │   │   │   ├── branchPackagePrice.validator.js
 │   │   │   ├── branchVariantPrice.validator.js
 │   │   │   └── common.validator.js
+│   │   ├── purchasing/
+│   │   │   ├── common.validator.js
+│   │   │   ├── goodsReceipt.validator.js
+│   │   │   └── purchaseOrder.validator.js
 │   │   ├── suppliers/
 │   │   │   ├── common.validator.js
 │   │   │   ├── supplier.validator.js
@@ -282,6 +315,7 @@ supermarket-management-system/
 │   ├── catalogReference.integration.test.js
 │   ├── pricing.integration.test.js
 │   ├── productCatalog.integration.test.js
+│   ├── purchasing.integration.test.js
 │   └── supplierCatalog.integration.test.js
 ├── .env
 ├── .env.example
@@ -291,7 +325,8 @@ supermarket-management-system/
 └── README.md
 ```
 
-`supplierCatalog.integration.test.js` exercises Phase 6 against MySQL,
+`purchasing.integration.test.js` exercises Phase 7 against MySQL,
+`supplierCatalog.integration.test.js` retains Phase 6 coverage,
 `pricing.integration.test.js` retains Phase 5C coverage,
 `productCatalog.integration.test.js` retains Phase 5B coverage,
 `catalogReference.integration.test.js` retains Phase 5A coverage,
@@ -384,7 +419,7 @@ Permissions are application-defined capabilities. A permission code is useful
 only because application routes check that exact code, so administrators cannot
 invent permission definitions through the HTTP API.
 
-The idempotent catalog contains 18 canonical Phase 4-6 permissions:
+The idempotent catalog contains 22 canonical Phase 4-7 permissions:
 
 | Permission code | Meaning |
 | --- | --- |
@@ -406,6 +441,10 @@ The idempotent catalog contains 18 canonical Phase 4-6 permissions:
 | `pricing.manage` | Create and update branch pricing configuration in Phase 5C |
 | `suppliers.read` | View supplier masters and supplier catalog configuration in Phase 6 |
 | `suppliers.manage` | Create and update supplier masters and supplier catalog configuration in Phase 6 |
+| `purchasing.read` | View branch purchase orders and receiving progress in Phase 7 |
+| `purchasing.manage` | Create, edit, and progress branch purchase orders in Phase 7 |
+| `receiving.read` | View branch goods receipts and posted lot evidence in Phase 7 |
+| `receiving.manage` | Create, edit, cancel, and atomically post branch goods receipts in Phase 7 |
 
 The seed inserts missing canonical permissions, reconciles their human-readable
 metadata, preserves unrelated permissions and roles, ensures the
@@ -431,6 +470,17 @@ Phase 6 uses `suppliers.read` for all supplier GET routes and
 only a global role grant (`user_roles.branch_id IS NULL`) satisfies these
 routes. A branch-scoped supplier grant does not satisfy them, and catalog,
 product, or pricing permissions do not imply supplier access.
+
+Phase 7 uses `purchasing.read`/`purchasing.manage` for purchase orders and
+`receiving.read`/`receiving.manage` for goods receipts. Permission scope and
+employee access are separate checks: a global grant can satisfy the permission
+for any branch, while a branch grant can satisfy it only for that exact branch.
+Whenever a user is employee-linked, that employee must also have a current
+active assignment at the URL branch, regardless of which grant supplied the
+permission. An unlinked system user may read with a qualifying grant, but every
+Phase 7 write additionally requires an active linked employee with a current
+assignment; the repository rechecks that operational identity inside the same
+transaction as the mutation.
 
 If `SYSTEM_ADMIN` already exists but is inactive, the seed deliberately leaves
 it inactive and prints a warning instead of silently reversing an emergency or
@@ -957,8 +1007,8 @@ or otherwise mismatched route returns `404` without exposing another supplier's
 configuration.
 
 Neither supplier catalog table contains a supplier cost column. Phase 6 does
-not invent one: purchase-item cost is a future Phase 7 transaction value and
-the approved purchase tables preserve that historical snapshot.
+not invent one: purchase-item cost is a Phase 7 transaction value and the
+approved purchase tables preserve that historical snapshot.
 
 ### Lifecycle and exact-value rules
 
@@ -971,9 +1021,9 @@ relationship, or correct non-identity metadata when retiring configuration.
 
 Changing a supplier to `INACTIVE` or `BLOCKED` does not cascade into
 `supplier_products`, `supplier_product_packages`, or historical purchase rows.
-The status itself is the current eligibility signal that the future Phase 7
-service must enforce before creating a purchase order. This lets a supplier be
-retired without destroying its catalog or history.
+The status itself is the current eligibility signal that the Phase 7 service
+enforces before creating a purchase order. This lets a supplier be retired
+without destroying its catalog or history.
 
 `minimumOrderQuantity` and `minimumPackageQuantity` are positive exact
 `DECIMAL(15,3)` strings. JavaScript numbers, signs, exponent notation, excess
@@ -1019,9 +1069,195 @@ delete child configuration.
 Supplier configuration never inserts or updates `branch_inventory`, inventory
 lots, stock ledgers, purchase orders, or goods receipts. It records who may
 supply an already-defined variant or package; it does not order, receive, or
-move goods. Phase 7 must transactionally revalidate supplier/catalog lifecycle,
-copy historical purchasing snapshots, and post later receipts through the
+move goods. Phase 7 transactionally revalidates supplier/catalog lifecycle,
+copies historical purchasing snapshots, and posts receipts through the
 inventory ledger.
+
+## Phase 7 endpoints and required permissions
+
+All Phase 7 routes are branch-aware, inherit authentication and forced-password
+change enforcement from `/api/admin`, and use only these exact paths:
+
+| # | Method and path | Permission | Purpose |
+| ---: | --- | --- | --- |
+| 1 | `GET /api/admin/branches/:branchId/purchase-orders` | `purchasing.read` | Paginated purchase-order headers |
+| 2 | `POST /api/admin/branches/:branchId/purchase-orders` | `purchasing.manage` | Create a DRAFT order |
+| 3 | `GET /api/admin/branches/:branchId/purchase-orders/:purchaseOrderId` | `purchasing.read` | Order, items, and posted receiving progress |
+| 4 | `PATCH /api/admin/branches/:branchId/purchase-orders/:purchaseOrderId` | `purchasing.manage` | Edit allowed DRAFT header fields |
+| 5 | `POST /api/admin/branches/:branchId/purchase-orders/:purchaseOrderId/items` | `purchasing.manage` | Add a DRAFT line |
+| 6 | `PATCH /api/admin/branches/:branchId/purchase-orders/:purchaseOrderId/items/:purchaseOrderItemId` | `purchasing.manage` | Edit allowed DRAFT line values |
+| 7 | `DELETE /api/admin/branches/:branchId/purchase-orders/:purchaseOrderId/items/:purchaseOrderItemId` | `purchasing.manage` | Delete a DRAFT line, not the document |
+| 8 | `POST /api/admin/branches/:branchId/purchase-orders/:purchaseOrderId/submit` | `purchasing.manage` | Submit a valid non-empty order |
+| 9 | `POST /api/admin/branches/:branchId/purchase-orders/:purchaseOrderId/approve` | `purchasing.manage` | Approve a submitted order |
+| 10 | `POST /api/admin/branches/:branchId/purchase-orders/:purchaseOrderId/cancel` | `purchasing.manage` | Cancel an eligible unreceived order |
+| 11 | `GET /api/admin/branches/:branchId/goods-receipts` | `receiving.read` | Paginated receipt headers |
+| 12 | `POST /api/admin/branches/:branchId/goods-receipts` | `receiving.manage` | Create a DRAFT receipt for an open approved order |
+| 13 | `GET /api/admin/branches/:branchId/goods-receipts/:goodsReceiptId` | `receiving.read` | Receipt, items, and posted lot evidence |
+| 14 | `PATCH /api/admin/branches/:branchId/goods-receipts/:goodsReceiptId` | `receiving.manage` | Edit allowed DRAFT receipt fields |
+| 15 | `POST /api/admin/branches/:branchId/goods-receipts/:goodsReceiptId/items` | `receiving.manage` | Add a DRAFT receipt line |
+| 16 | `PATCH /api/admin/branches/:branchId/goods-receipts/:goodsReceiptId/items/:goodsReceiptItemId` | `receiving.manage` | Edit allowed DRAFT line values |
+| 17 | `DELETE /api/admin/branches/:branchId/goods-receipts/:goodsReceiptId/items/:goodsReceiptItemId` | `receiving.manage` | Delete a DRAFT line, not the receipt |
+| 18 | `POST /api/admin/branches/:branchId/goods-receipts/:goodsReceiptId/post` | `receiving.manage` | Atomically post accepted stock |
+| 19 | `POST /api/admin/branches/:branchId/goods-receipts/:goodsReceiptId/cancel` | `receiving.manage` | Cancel a DRAFT receipt |
+
+There are no item-detail aliases, document DELETE routes, generic inventory or
+lot routes, supplier-payment routes, or automatic-reordering routes. A valid ID
+under the wrong branch or parent document returns `404`; malformed IDs return
+`400`. All `BIGINT` IDs enter and leave the API as strings.
+
+## Purchase-order behavior
+
+Creation accepts only `supplierId`, nullable `expectedAt`, nullable
+`supplierQuoteNumber`, `shippingAmount` (default `"0.00"`), and nullable
+`notes`. The server locks and validates the active branch, active supplier, and
+operational employee; generates a collision-resistant `PO-` number; takes the
+branch currency; and creates a zero-line `DRAFT` without changing stock.
+Foreign-currency purchasing is deliberately unavailable because the schema has
+no exchange-rate model.
+
+Only a DRAFT header may PATCH `expectedAt`, `supplierQuoteNumber`,
+`shippingAmount`, or `notes`; supplier, branch, number, currency, status,
+actors, lifecycle timestamps, and totals are server-owned. A line create
+accepts `productVariantId`, nullable `productPackageId`,
+`orderedPackageQuantity`, `unitCost`, and optional `discountAmount` and
+`taxRatePercent`. A line PATCH may change only the latter four value fields.
+Changing product/package identity means deleting the DRAFT line and creating a
+new one.
+
+Each line copies a human-readable item description and the locked package
+conversion (`1.000000` for direct base-unit purchasing). The server derives
+base quantity with positive HALF-UP rounding to scale 3 and assigns line
+numbers while holding the parent order lock. It requires active product,
+variant, purchasable package, supplier-product, and supplier-package state as
+applicable, including both base and package minimum quantities. Preferred
+supplier status is not required.
+
+Money and quantity inputs must be exact unsigned decimal strings at their
+schema scales. JavaScript numbers, signs, exponent notation, malformed values,
+excess scale, and overflow are rejected. Scaled `BigInt` arithmetic implements:
+
+```text
+gross = ROUND(orderedQuantity * unitCost, 2, HALF-UP)
+tax   = ROUND((gross - discountAmount) * taxRatePercent / 100, 2, HALF-UP)
+lineTotal = gross - discountAmount + tax
+
+subtotalAmount = SUM(line gross)
+discountAmount = SUM(line discounts)
+taxAmount      = SUM(line taxes)
+totalAmount    = subtotalAmount - discountAmount + taxAmount + shippingAmount
+```
+
+The server rejects discounts above gross and derived quantity/money overflow.
+Header totals are recomputed from persisted line snapshots inside every DRAFT
+line or shipping mutation transaction. Decimal response values remain strings.
+
+Submission performs `DRAFT -> SUBMITTED`, requires at least one line, locks and
+revalidates current supplier/catalog eligibility and totals, and sets one
+server-owned `orderedAt`. Approval performs `SUBMITTED -> APPROVED`, repeats
+that validation, and records the employee and one `approvedAt`. Cancellation is
+limited to unreceived `DRAFT`, `SUBMITTED`, or `APPROVED` orders; an existing
+non-cancelled receipt must be cancelled explicitly first. The optional cancel
+reason is audit context because the frozen order table has no reason column.
+There are no backwards transitions or post-submission content edits.
+
+Lists use page 1, limit 20, maximum 100 and stable newest-first ordering.
+Purchase-order filters are `search`, `status`, `supplierId`,
+`createdByEmployeeId`, `from`, `to`, `page`, and `limit`; `from`/`to` apply to
+the order creation date. Detail derives `acceptedQuantity` and
+`remainingQuantity` from POSTED receipts without persisting report columns.
+
+## Goods-receipt and stock-posting behavior
+
+A receipt can be created only for an `APPROVED` or `PARTIALLY_RECEIVED` order.
+Creation accepts `purchaseOrderId`, nullable `supplierDeliveryNote`, nullable
+`supplierInvoiceNumber`, and nullable `notes`. Branch and supplier come from
+the order, the employee comes from the authenticated operational actor, and the
+server owns the `GR-` number, `receivedAt`, and DRAFT status. The supplier
+invoice is unique per supplier. Only DRAFT receipts may PATCH the three
+documentary fields; no-op changes do not update or audit.
+
+Receipt lines identify one item from that same purchase order and accept exact
+`packageQuantityAccepted`, `packageQuantityRejected`, `actualUnitCost`, and
+optional discount/tax amounts. They copy the PO line's historical variant and
+conversion and derive base accepted/rejected quantities. At least one quantity
+must be positive. Payable line total uses accepted stock only:
+
+```text
+grossAccepted = ROUND(quantityAccepted * actualUnitCost, 2, HALF-UP)
+lineTotal = grossAccepted - discountAmount + taxAmount
+```
+
+Rejected quantity never consumes order fulfilment, creates a ledger item, or
+increases inventory. DRAFT validation gives early over-receipt feedback, while
+POST locks the order and all relevant receipts/items and authoritatively ensures
+cumulative accepted quantities from POSTED receipts never exceed the order.
+A rejected-only receipt cannot POST because the schema ties POSTED receipts to
+a real stock transaction; it may be corrected or cancelled.
+
+Posting accepts only optional `lotAllocations`. `NONE` variants reject lots;
+`OPTIONAL` variants permit either none or full allocation; `REQUIRED` variants
+require full allocation. Allocations must exactly equal the accepted base
+quantity. Each lot uses either `inventoryLotId` or a case-sensitive
+`lotNumber` with optional manufacture/expiry dates. Existing same-variant lots
+are reused only when supplied immutable metadata agrees. Expiry-required
+variants require it, and `RECALLED`/`CLOSED` or wrong-variant lots are rejected.
+Receipt posting may create a necessary lot record but exposes no generic lot
+administration API.
+
+The POST operation is one transaction: it rechecks the actor/branch and
+document state, locks current catalog roots and document rows in deterministic
+order, validates receipt limits and lots, creates/reuses lots, creates exactly
+one `PURCHASE_RECEIPT` inventory transaction, adds one positive ledger item per
+accepted receipt item, writes both lot-evidence bridges when allocated,
+increments `branch_inventory` and `branch_lot_inventory`, links and marks the
+receipt POSTED, recalculates the order status, audits, and commits. Any failure
+rolls everything back. A second or concurrent duplicate POST cannot create a
+second transaction or stock increase.
+
+`branch_inventory` remains the fast branch/variant projection: the first
+receipt creates the row and later receipts increment quantity/version under
+lock. `branch_lot_inventory` is changed only for allocated accepted stock and
+preserves quarantine. The append-only inventory transaction and its items are
+the stock authority; projections, receipt state, lot evidence, and ledger all
+move together. Receiving never changes selling prices, product/catalog state,
+or supplier configuration.
+
+After each POST, accepted quantities from POSTED receipts produce
+`APPROVED` (none), `PARTIALLY_RECEIVED` (some), or `RECEIVED` (every line
+complete). A POSTED receipt, its lines, allocations, and transaction link are
+immutable. A DRAFT receipt may instead become `CANCELLED`, which posts no stock
+and cannot be reopened. Lists support `search`, `status`, `purchaseOrderId`,
+`supplierId`, `receivedByEmployeeId`, `from`, `to`, `page`, and `limit`;
+receipt date filters apply to `receivedAt`.
+
+## Phase 7 history, audit, and locking
+
+PO creation/submission/approval uses current supplier and product eligibility.
+Once approved, receiving uses the PO line's historical identity, conversion,
+and cost structure rather than later catalog values; a later supplier disable
+does not invalidate an already approved receipt. Existing Phase 5B dependency
+guards continue to protect incompatible package/variant structural changes,
+and Phase 6 configuration is consulted but never rewritten.
+
+The purchasing audit actions are `PURCHASE_ORDER_CREATED`,
+`PURCHASE_ORDER_UPDATED`, `PURCHASE_ORDER_ITEM_CREATED`,
+`PURCHASE_ORDER_ITEM_UPDATED`, `PURCHASE_ORDER_ITEM_DELETED`,
+`PURCHASE_ORDER_SUBMITTED`, `PURCHASE_ORDER_APPROVED`, and
+`PURCHASE_ORDER_CANCELLED`. Receiving uses `GOODS_RECEIPT_CREATED`,
+`GOODS_RECEIPT_UPDATED`, `GOODS_RECEIPT_ITEM_CREATED`,
+`GOODS_RECEIPT_ITEM_UPDATED`, `GOODS_RECEIPT_ITEM_DELETED`,
+`GOODS_RECEIPT_POSTED`, and `GOODS_RECEIPT_CANCELLED`. Each committed mutation
+and safe before/after snapshot shares a transaction with its audit. GETs,
+rejected writes, and no-op PATCH requests write no audit.
+
+Cross-phase writes discover IDs with pre-reads, then lock authoritative catalog
+roots in the existing product -> variant -> package -> supplier relationship
+order before locking documents. Document operations serialize the purchase
+order, its items, receipts, receipt items, then lots and sorted branch balance
+rows. All decisions are revalidated after locks; rollback and connection
+release remain mandatory on every error. This prevents torn line PATCHes, lost
+header totals, over-receiving, double posts, duplicated lot evidence, and lost
+stock increments without introducing a broad automatic retry framework.
 
 ## Reference catalog behavior
 
@@ -1255,7 +1491,7 @@ Duplicate IDs are rejected. The repository locks the role, verifies every ID,
 preserves bridge rows already present, deletes removed `role_permissions`, inserts
 new ones, and audits sorted before/after permission codes in one transaction. An
 empty array intentionally removes every permission from an ordinary role. It is
-rejected for `SYSTEM_ADMIN` unless all 18 canonical permissions remain.
+rejected for `SYSTEM_ADMIN` unless all 22 canonical permissions remain.
 
 ## Global and branch-scoped user roles
 
@@ -1368,7 +1604,7 @@ Run the complete suite against the configured local/development database:
 npm test
 ```
 
-The complete Phase 2-6 validation run covers:
+The complete Phase 2-7 validation run covers:
 
 - Phase 2 health, database health, JSON 404, and graceful SIGINT/SIGTERM;
 - Phase 3 login, JWT enforcement, password-change gating, current account state,
@@ -1404,7 +1640,13 @@ The complete Phase 2-6 validation run covers:
   lifecycle, composite supplier-product/package ownership, exact minimum
   quantities, preferred uniqueness, no-op and failed-write audit suppression,
   cross-phase race serialization, and zero inventory/purchasing side effects;
-  and
+- Phase 7 branch authorization and operational-actor gating, all 19 locked
+  routes against Phase 4-6 unrelated permissions, exact PO/receipt calculations
+  and snapshots, invalid and legal lifecycle changes, purchasing eligibility,
+  partial/rejected receiving, over-receipt and duplicate-post protection,
+  required/optional/no-lot policies, lot identity and metadata rules, atomic
+  ledger/projection posting and rollback, transaction-bound audit, and
+  concurrency-safe final states; and
 - exact reverse-FK cleanup of uniquely identified `TEST_*` access-control,
   organization, product-dependency, reference-catalog, pricing, bridge, and
   audit rows.
@@ -1417,18 +1659,20 @@ fixtures. Phase 5B creates uniquely identified product-master rows and only the
 minimum zero-balance/history rows needed to verify immutability. Phase 5C creates
 isolated organization/product/pricing prerequisites directly in SQL. Phase 6
 creates isolated access/product prerequisites, exercises supplier APIs, and
-verifies that neither inventory nor Phase 7 operational rows appear. Every suite
-removes its temporary rows in reverse foreign-key order. No suite operates real
-development records or implements inventory, purchase-order/receiving, POS,
+verifies that neither inventory nor Phase 7 operational rows appear. Phase 7
+creates isolated branch, catalog, supplier, document, lot, and stock fixtures
+and deletes their exact reverse-FK closure after testing. Every suite removes
+its temporary rows in reverse foreign-key order. No suite operates real
+development records or implements general inventory administration, POS,
 sales, returns, payments, transfers, or stock-count business workflows.
 
-The latest local validation on 2026-09-09 passed all 66 discovered test entries:
-the 58 retained Phase 2-5C entries plus 8 Phase 6 entries. It confirmed both
+The latest local validation on 2026-09-11 passed all 82 discovered test entries:
+the 66 retained Phase 2-6 entries plus 16 Phase 7 entries. It confirmed both
 graceful-shutdown signals, MySQL 8.0.46, the active
-`supermarket_management` database with 54 tables, all 18 canonical permissions,
-one canonical `SYSTEM_ADMIN` role with all 18 mappings, and zero remaining
-temporary Phase 3/4/5A/5B/5C/6 fixtures. The full run completed with 66 passed,
-0 failed, 0 skipped, and 0 cancelled in 34,997.500549 ms. Results are
+`supermarket_management` database with 54 tables, all 22 canonical permissions,
+one canonical `SYSTEM_ADMIN` role with all 22 mappings, and zero remaining
+temporary Phase 3/4/5A/5B/5C/6/7 fixtures. The full run completed with 82
+passed, 0 failed, 0 skipped, and 0 cancelled in 46,428.013238 ms. Results are
 environment-specific, so run `npm test` again after relevant code,
 configuration, or database changes.
 
@@ -1525,5 +1769,5 @@ Phase 5A stops after shared reference-catalog administration. Phase 5B stops
 after organization-wide product, variant, package, and barcode administration.
 Phase 5C stops after branch price configuration and read-only effective-price
 resolution. Phase 6 stops after supplier master and supplier catalog
-configuration. Phase 7 — Purchasing & Stock Receiving was not started and must
-wait for review and approval.
+configuration. Phase 7 stops after purchase-order administration and atomic
+purchase-receipt stock posting. Phase 8 — Inventory Engine was NOT started.
