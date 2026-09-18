@@ -116,6 +116,16 @@ const ACCESS_CONTROL_PERMISSIONS = Object.freeze(
       name: 'Manage Receiving',
       description: 'Create, edit, cancel, and atomically post branch goods receipts.',
     },
+    {
+      code: 'inventory.read',
+      name: 'Read Inventory',
+      description: 'View branch stock projections, lots, and inventory ledger history.',
+    },
+    {
+      code: 'inventory.manage',
+      name: 'Manage Inventory Configuration',
+      description: 'Set branch reorder configuration and branch lot operational state without changing stock quantities.',
+    },
   ].map((permission) => Object.freeze(permission)),
 );
 

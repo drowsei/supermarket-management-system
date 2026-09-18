@@ -1,24 +1,27 @@
 # Supermarket Management System
 
 A production-oriented, multi-branch supermarket management system built in
-reviewed phases. Phase 7 adds branch purchase orders and atomic stock receiving
-on top of the approved 54-table database and completed Phase 2-6 foundation.
+reviewed phases. Phase 8 adds branch-scoped inventory projections, lot state,
+and read-only stock-ledger views on top of Phase 7 atomic receiving and the
+approved 54-table database.
 
-The current API operates branch purchase orders, goods receipts, receipt-time
-lot allocation, and the stock-ledger posting required by receiving. It also
+The current API reads branch inventory and historical stock transactions and
+configures reorder settings and branch lot availability. It operates branch
+purchase orders, goods receipts, receipt-time lot allocation, and the
+stock-ledger posting required by receiving. It also
 operates supplier masters and supplier catalog relationships, configures prices
 per branch, and resolves the currently effective variant or package price. It
 operates products,
 sellable/stockable variants, unit-conversion packages, case-sensitive barcodes,
 units of measure, hierarchical categories, brands, tax rates, and the existing
-organization and access records. It retains all Phase 2-6 behavior.
+organization and access records. It retains all Phase 2-7 behavior.
 
-Phases 5A, 5B, 5C, 6, and 7 do **not** redesign the database. The approved
+Phases 5A, 5B, 5C, 6, 7, and 8 do **not** redesign the database. The approved
 [`database/schema.sql`](database/schema.sql) and detailed
 [`database/README.md`](database/README.md) remain the authority for the existing
 54 tables.
 
-## Phase 5A through Phase 7 purpose and boundaries
+## Phase 5A through Phase 8 purpose and boundaries
 
 Reference catalog records describe shared business concepts that products will
 reference later. They are organization-wide configuration, not branch stock,
@@ -83,10 +86,11 @@ Phase 7 builds on supplier configuration and includes:
 - transaction-bound audits, duplicate-post protection, bounded lists, and
   full Phase 2-6 regression coverage.
 
-Phase 7 is complete at the purchasing and stock-receiving boundary described
-here. General inventory administration, transfers, adjustments, customers,
-POS/checkout, sales, reports, frontend, and Postman remain intentionally
-excluded. Phase 8 — Inventory Engine has not started.
+Phase 8 adds read-only branch stock, lot, and ledger views plus two operational
+configuration writes: reorder settings and branch lot status. It does not
+create stock or ledger transactions. Stock adjustments, counts, transfers,
+customers, POS/checkout, sales, reports, frontend, and Postman remain excluded.
+Phase 9 — Stock Adjustments, Counts & Transfers has not started.
 
 ## Technology stack
 
@@ -131,7 +135,7 @@ route
 All `/api/admin` routes pass through `authenticate` and
 `requirePasswordChangeCompleted`. Organization-wide administration uses
 `requirePermission(...)`, including every Phase 6 supplier route. Phase 5C
-pricing and Phase 7 purchasing/receiving use
+pricing, Phase 7 purchasing/receiving, and Phase 8 inventory use
 `requireBranchPermission(...)` with the URL branch. A role name never bypasses
 authorization.
 
@@ -161,6 +165,7 @@ supermarket-management-system/
 │   │   ├── effectivePrice.controller.js
 │   │   ├── employee.controller.js
 │   │   ├── goodsReceipt.controller.js
+│   │   ├── inventory.controller.js
 │   │   ├── product.controller.js
 │   │   ├── productBarcode.controller.js
 │   │   ├── productPackage.controller.js
@@ -178,6 +183,7 @@ supermarket-management-system/
 │   │   ├── authorization.middleware.js
 │   │   ├── errorHandler.js
 │   │   ├── loginRateLimiter.js
+│   │   ├── inventoryBranch.middleware.js
 │   │   ├── purchasingBranch.middleware.js
 │   │   └── pricingBranch.middleware.js
 │   ├── repositories/
@@ -192,6 +198,8 @@ supermarket-management-system/
 │   │   ├── effectivePrice.repository.js
 │   │   ├── employee.repository.js
 │   │   ├── goodsReceipt.repository.js
+│   │   ├── inventoryRead.repository.js
+│   │   ├── inventoryWrite.repository.js
 │   │   ├── product.repository.js
 │   │   ├── productBarcode.repository.js
 │   │   ├── productCatalog.repository.js
@@ -218,6 +226,8 @@ supermarket-management-system/
 │   │   │   │   └── unit.routes.js
 │   │   │   ├── employee.routes.js
 │   │   │   ├── index.js
+│   │   │   ├── inventory/
+│   │   │   │   └── index.js
 │   │   │   ├── products/
 │   │   │   │   ├── index.js
 │   │   │   │   ├── product.routes.js
@@ -253,6 +263,7 @@ supermarket-management-system/
 │   │   ├── effectivePrice.service.js
 │   │   ├── employee.service.js
 │   │   ├── goodsReceipt.service.js
+│   │   ├── inventory.service.js
 │   │   ├── product.service.js
 │   │   ├── productBarcode.service.js
 │   │   ├── productPackage.service.js
@@ -287,6 +298,8 @@ supermarket-management-system/
 │   │   │   ├── category.validator.js
 │   │   │   ├── taxRate.validator.js
 │   │   │   └── unitOfMeasure.validator.js
+│   │   ├── inventory/
+│   │   │   └── inventory.validator.js
 │   │   ├── products/
 │   │   │   ├── common.validator.js
 │   │   │   ├── product.validator.js
@@ -313,6 +326,7 @@ supermarket-management-system/
 │   ├── admin.integration.test.js
 │   ├── auth.integration.test.js
 │   ├── catalogReference.integration.test.js
+│   ├── inventory.integration.test.js
 │   ├── pricing.integration.test.js
 │   ├── productCatalog.integration.test.js
 │   ├── purchasing.integration.test.js
@@ -325,7 +339,8 @@ supermarket-management-system/
 └── README.md
 ```
 
-`purchasing.integration.test.js` exercises Phase 7 against MySQL,
+`inventory.integration.test.js` exercises Phase 8 against MySQL,
+`purchasing.integration.test.js` retains Phase 7 coverage,
 `supplierCatalog.integration.test.js` retains Phase 6 coverage,
 `pricing.integration.test.js` retains Phase 5C coverage,
 `productCatalog.integration.test.js` retains Phase 5B coverage,
@@ -419,7 +434,7 @@ Permissions are application-defined capabilities. A permission code is useful
 only because application routes check that exact code, so administrators cannot
 invent permission definitions through the HTTP API.
 
-The idempotent catalog contains 22 canonical Phase 4-7 permissions:
+The idempotent catalog contains 24 canonical Phase 4-8 permissions:
 
 | Permission code | Meaning |
 | --- | --- |
@@ -445,6 +460,8 @@ The idempotent catalog contains 22 canonical Phase 4-7 permissions:
 | `purchasing.manage` | Create, edit, and progress branch purchase orders in Phase 7 |
 | `receiving.read` | View branch goods receipts and posted lot evidence in Phase 7 |
 | `receiving.manage` | Create, edit, cancel, and atomically post branch goods receipts in Phase 7 |
+| `inventory.read` | View branch stock projections, branch lots, and stock-ledger history in Phase 8 |
+| `inventory.manage` | Configure reorder settings and branch lot operational state in Phase 8 |
 
 The seed inserts missing canonical permissions, reconciles their human-readable
 metadata, preserves unrelated permissions and roles, ensures the
@@ -481,6 +498,16 @@ permission. An unlinked system user may read with a qualifying grant, but every
 Phase 7 write additionally requires an active linked employee with a current
 assignment; the repository rechecks that operational identity inside the same
 transaction as the mutation.
+
+Phase 8 uses `inventory.read` for six GET routes and `inventory.manage` for
+the two configuration writes. A global grant can satisfy the permission-scope
+check for any branch; a branch grant satisfies it only for that branch. A
+linked employee still needs a current active assignment to the target branch
+for **either** grant. An authorized unlinked system user can read, but neither
+a global role nor `SYSTEM_ADMIN` bypasses the active linked-employee requirement
+for writes. Catalog, product, pricing, supplier, purchasing, or receiving
+permissions do not imply inventory access; `inventory.manage` does not imply
+`inventory.read`.
 
 If `SYSTEM_ADMIN` already exists but is inactive, the seed deliberately leaves
 it inactive and prints a warning instead of silently reversing an emergency or
@@ -1259,6 +1286,100 @@ release remain mandatory on every error. This prevents torn line PATCHes, lost
 header totals, over-receiving, double posts, duplicated lot evidence, and lost
 stock increments without introducing a broad automatic retry framework.
 
+## Phase 8 inventory engine
+
+Phase 8 exposes exactly eight branch-scoped routes under
+`/api/admin/branches/:branchId/inventory`:
+
+| Method and path suffix | Permission | Purpose |
+| --- | --- | --- |
+| `GET /` | `inventory.read` | Paginated branch inventory projections |
+| `GET /variants/:variantId` | `inventory.read` | One branch/variant projection and its branch lots |
+| `PUT /variants/:variantId/settings` | `inventory.manage` | Reorder configuration only |
+| `GET /lots` | `inventory.read` | Paginated lots with state at this branch |
+| `GET /lots/:inventoryLotId` | `inventory.read` | Branch lot and up to ten recent ledger allocations |
+| `PATCH /lots/:inventoryLotId/status` | `inventory.manage` | Branch operational lot state only |
+| `GET /transactions` | `inventory.read` | Paginated stock-ledger headers |
+| `GET /transactions/:inventoryTransactionId` | `inventory.read` | Header, items, and lot allocations |
+
+Every route inherits authentication and forced-password-change protection.
+Branch permission scope and the separate linked-employee assignment gate are
+both enforced by the existing authorization middleware. Writes additionally
+recheck an active linked employee and current branch assignment inside their
+transaction; unlinked system accounts may read but cannot write. A global
+inventory grant satisfies permission scope across branches, whereas a branch
+grant satisfies it only for the matching branch. No unrelated permission
+implies inventory access.
+
+`branch_inventory` is the fast branch/variant balance and reorder projection;
+`inventory_transactions` plus items and lot allocations are the historical
+stock authority. The inventory list returns only existing projection rows and
+supports `search`, `productVariantId`, `categoryId`, `brandId`, `stockStatus`,
+`lotTrackingMode`, `page`, and `limit`. Lots list only rows with
+`branch_lot_inventory` at the URL branch and supports `search`,
+`productVariantId`, `branchLotStatus`, `lotStatus`, `expiresBefore`,
+`expiresAfter`, `page`, and `limit`. All lists default to page 1/limit 20,
+limit at 100, and have deterministic ID tie-breakers. Search uses fixed,
+parameterized fields; no client-supplied SQL sort expression is accepted.
+
+Stock status is based on **total** `quantity_on_hand`, not the quantity in
+currently available lots: `OUT_OF_STOCK` means zero; `LOW_STOCK` means positive
+stock with positive reorder level and on-hand stock at or below that level;
+`IN_STOCK` means positive stock otherwise. A negative legacy value is reported
+as `INCONSISTENT`, never clamped. `trackedLotQuantity` is the sum of branch lot
+balances and `untrackedQuantity` is exact total minus tracked, computed without
+floating-point arithmetic. Read-only consistency warnings flag negative
+balances, lot totals exceeding branch totals, unexpected lots for `NONE`, or
+a tracked/total mismatch for `REQUIRED`. `OPTIONAL` may have both tracked and
+untracked stock. No GET creates a projection or repairs a mismatch.
+
+`PUT /variants/:variantId/settings` accepts **only** both nonnegative
+DECIMAL(15,3) strings `reorderLevel` and `reorderQuantity`. Nonfractional
+variants require whole base units. It may create a zero-stock projection
+before a first receipt; this is configuration, not an `OPENING_BALANCE` or
+other stock movement. A persisted change increments `version_number` (new
+rows begin at 0); an identical PUT does not touch the row, increment the
+version, or audit. Reorder configuration does not automatically place orders.
+
+The branch lot status enum is `AVAILABLE`, `QUARANTINED`, `BLOCKED`,
+`DEPLETED`. Clients may select `AVAILABLE`, `QUARANTINED`, or `BLOCKED` only.
+`DEPLETED` is system-owned. Making a branch lot `AVAILABLE` requires positive
+branch quantity, globally `ACTIVE` lot state, and an unexpired lot according
+to the database UTC date. The global lot's status, identity, expiry, and
+quantity do not change through this route. A status no-op changes nothing.
+Lot reads expose global and branch status separately, and classify expiry as
+`NO_EXPIRY`, `VALID`, or `EXPIRED` using MySQL's UTC date; reading does not
+automatically change either status. Exact lot-number identity remains
+case-sensitive in storage.
+
+The transaction list supports `search`, `transactionType`,
+`productVariantId`, `inventoryLotId`, `createdByEmployeeId`, `from`, `to`,
+`page`, and `limit`; dates filter `occurred_at`, inclusive by UTC calendar day.
+Item/lot filters use `EXISTS` so one header cannot be duplicated by joins.
+Detail preserves exact signed `quantity_change` and the stored nullable
+historical `unit_cost`; it never substitutes current selling or supplier cost.
+Each item's lot allocations and read-only quantity-consistency result are
+included. All `BIGINT UNSIGNED` IDs are JSON strings and all stock DECIMALs
+remain exact strings.
+
+Both Phase 8 writes use a transaction with this order: active employee,
+branch, and assignment; product; variant; then the branch inventory row for
+settings, or global lot then branch lot row for status. The latter matches
+Phase 7 receipt posting's catalog → lot → branch balance order. Row locks
+serialize conflicting settings/status requests and concurrent receipt posts
+without lost quantities, torn reorder pairs, or lost status/version updates.
+Audit records commit with writes using composite record IDs
+`branchId:productVariantId` and `branchId:inventoryLotId`; the only actions
+are `BRANCH_INVENTORY_SETTINGS_CREATED`,
+`BRANCH_INVENTORY_SETTINGS_UPDATED`, and `BRANCH_LOT_STATUS_UPDATED`. Audit
+includes user, linked employee, branch, request, network context, and safe
+before/after values. GETs, failed writes, and no-ops produce no Phase 8 audit.
+
+There is no Phase 8 endpoint to edit on-hand quantities, create/modify/delete
+ledger entries, change global lot status, or run adjustments, counts, or
+transfers. Receipt posting remains the only implemented stock movement. Phase 9
+— Stock Adjustments, Counts & Transfers has not started.
+
 ## Reference catalog behavior
 
 ### Units of measure
@@ -1491,7 +1612,7 @@ Duplicate IDs are rejected. The repository locks the role, verifies every ID,
 preserves bridge rows already present, deletes removed `role_permissions`, inserts
 new ones, and audits sorted before/after permission codes in one transaction. An
 empty array intentionally removes every permission from an ordinary role. It is
-rejected for `SYSTEM_ADMIN` unless all 22 canonical permissions remain.
+rejected for `SYSTEM_ADMIN` unless all 24 canonical permissions remain.
 
 ## Global and branch-scoped user roles
 
@@ -1604,7 +1725,7 @@ Run the complete suite against the configured local/development database:
 npm test
 ```
 
-The complete Phase 2-7 validation run covers:
+The complete Phase 2-8 validation run covers:
 
 - Phase 2 health, database health, JSON 404, and graceful SIGINT/SIGTERM;
 - Phase 3 login, JWT enforcement, password-change gating, current account state,
@@ -1646,7 +1767,12 @@ The complete Phase 2-7 validation run covers:
   partial/rejected receiving, over-receipt and duplicate-post protection,
   required/optional/no-lot policies, lot identity and metadata rules, atomic
   ledger/projection posting and rollback, transaction-bound audit, and
-  concurrency-safe final states; and
+  concurrency-safe final states;
+- Phase 8 all eight branch inventory routes, permission/actor matrix, exact
+  quantities and signed historical costs, projection/lot/ledger filters,
+  read-only consistency diagnostics, strict settings and lot-state writes,
+  no-op/failed-write audit suppression, receipt races, boundary-method absence,
+  and zero unrelated catalog/pricing/supplier/document mutation; and
 - exact reverse-FK cleanup of uniquely identified `TEST_*` access-control,
   organization, product-dependency, reference-catalog, pricing, bridge, and
   audit rows.
@@ -1661,20 +1787,21 @@ isolated organization/product/pricing prerequisites directly in SQL. Phase 6
 creates isolated access/product prerequisites, exercises supplier APIs, and
 verifies that neither inventory nor Phase 7 operational rows appear. Phase 7
 creates isolated branch, catalog, supplier, document, lot, and stock fixtures
-and deletes their exact reverse-FK closure after testing. Every suite removes
-its temporary rows in reverse foreign-key order. No suite operates real
-development records or implements general inventory administration, POS,
-sales, returns, payments, transfers, or stock-count business workflows.
+and deletes their exact reverse-FK closure after testing. Phase 8 creates
+isolated `TEST_P8_*` organization/catalog prerequisites and posts actual Phase 7
+receipts for stock history; one direct SQL ledger row tests negative/null read
+preservation. Every suite removes its temporary rows in reverse foreign-key
+order. No suite operates real development records or implements Phase 9
+adjustments/counts/transfers, POS, sales, returns, or payments.
 
-The latest local validation on 2026-09-11 passed all 82 discovered test entries:
-the 66 retained Phase 2-6 entries plus 16 Phase 7 entries. It confirmed both
-graceful-shutdown signals, MySQL 8.0.46, the active
-`supermarket_management` database with 54 tables, all 22 canonical permissions,
-one canonical `SYSTEM_ADMIN` role with all 22 mappings, and zero remaining
-temporary Phase 3/4/5A/5B/5C/6/7 fixtures. The full run completed with 82
-passed, 0 failed, 0 skipped, and 0 cancelled in 46,428.013238 ms. Results are
-environment-specific, so run `npm test` again after relevant code,
-configuration, or database changes.
+The latest local validation on 2026-09-13 passed all 96 discovered test entries:
+the 82 retained Phase 2-7 entries plus 14 Phase 8 entries. It confirmed the
+active `supermarket_management` database with 54 tables on MySQL 8.0.46, 24
+canonical permissions, one active `SYSTEM_ADMIN` role with all 24 canonical
+mappings, and zero remaining `TEST_P8_*` fixtures in the checked tables. The
+full run completed with 96 passed, 0 failed, 0 skipped, and 0 cancelled in
+26,496.484968 ms. Results are environment-specific, so run `npm test` again
+after relevant code, configuration, or database changes.
 
 Quick Phase 2 smoke checks after startup:
 
@@ -1770,4 +1897,6 @@ after organization-wide product, variant, package, and barcode administration.
 Phase 5C stops after branch price configuration and read-only effective-price
 resolution. Phase 6 stops after supplier master and supplier catalog
 configuration. Phase 7 stops after purchase-order administration and atomic
-purchase-receipt stock posting. Phase 8 — Inventory Engine was NOT started.
+purchase-receipt stock posting. Phase 8 stops after branch stock/lot/ledger
+reads and reorder/branch-lot-status configuration. Phase 9 — Stock Adjustments,
+Counts & Transfers was NOT started.

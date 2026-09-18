@@ -406,7 +406,7 @@ async function createAccessAndReferenceFixtures(fixture) {
     const canonicalCodes = ACCESS_CONTROL_PERMISSIONS.map(
       (permission) => permission.code,
     );
-    assert.equal(canonicalCodes.length, 22);
+    assert.equal(canonicalCodes.length, 24);
     const [permissionRows] = await connection.execute(
       `SELECT
          CAST(permission_id AS CHAR) AS permissionId,
@@ -415,7 +415,7 @@ async function createAccessAndReferenceFixtures(fixture) {
        WHERE permission_code IN (${placeholders(canonicalCodes)})`,
       canonicalCodes,
     );
-    assert.equal(permissionRows.length, 22);
+    assert.equal(permissionRows.length, 24);
     const permissionIdByCode = Object.fromEntries(
       permissionRows.map((row) => [row.permissionCode, row.permissionId]),
     );
@@ -1076,7 +1076,7 @@ async function verifyFixtureCleanup(fixture) {
        WHERE permission_code IN (${placeholders(canonicalCodes)})`,
       canonicalCodes,
     );
-    assert.equal(Number(permissionRows[0].count), 22);
+    assert.equal(Number(permissionRows[0].count), 24);
 
     const [mappingRows] = await connection.execute(
       `SELECT COUNT(*) AS count
@@ -1087,7 +1087,7 @@ async function verifyFixtureCleanup(fixture) {
          AND p.permission_code IN (${placeholders(canonicalCodes)})`,
       [SYSTEM_ADMIN_ROLE.code, ...canonicalCodes],
     );
-    assert.equal(Number(mappingRows[0].count), 22);
+    assert.equal(Number(mappingRows[0].count), 24);
   } finally {
     connection.release();
   }
@@ -1415,8 +1415,8 @@ test(
           const canonicalCodes = ACCESS_CONTROL_PERMISSIONS.map(
             (permission) => permission.code,
           );
-          assert.equal(canonicalCodes.length, 22);
-          assert.equal(new Set(canonicalCodes).size, 22);
+          assert.equal(canonicalCodes.length, 24);
+          assert.equal(new Set(canonicalCodes).size, 24);
           const [permissionRows] = await pool.execute(
             `SELECT COUNT(*) AS count
              FROM permissions
@@ -1432,8 +1432,8 @@ test(
                AND p.permission_code IN (${placeholders(canonicalCodes)})`,
             [SYSTEM_ADMIN_ROLE.code, ...canonicalCodes],
           );
-          assert.equal(Number(permissionRows[0].count), 22);
-          assert.equal(Number(mappingRows[0].count), 22);
+          assert.equal(Number(permissionRows[0].count), 24);
+          assert.equal(Number(mappingRows[0].count), 24);
 
           for (const [method, path] of [
             ['GET', '/api/admin/products'],
