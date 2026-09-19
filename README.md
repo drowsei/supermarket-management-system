@@ -1,12 +1,13 @@
 # Supermarket Management System
 
 A production-oriented, multi-branch supermarket management system built in
-reviewed phases. Phase 8 adds branch-scoped inventory projections, lot state,
-and read-only stock-ledger views on top of Phase 7 atomic receiving and the
+reviewed phases. Phase 9 adds controlled stock adjustments, physical counts,
+and inter-branch transfers on top of the Phase 8 inventory engine and the
 approved 54-table database.
 
-The current API reads branch inventory and historical stock transactions and
-configures reorder settings and branch lot availability. It operates branch
+The current API reads branch inventory and historical stock transactions,
+configures reorder settings and branch lot availability, and atomically posts
+adjustments, count corrections, transfer dispatches, and transfer receipts. It operates branch
 purchase orders, goods receipts, receipt-time lot allocation, and the
 stock-ledger posting required by receiving. It also
 operates supplier masters and supplier catalog relationships, configures prices
@@ -16,12 +17,12 @@ sellable/stockable variants, unit-conversion packages, case-sensitive barcodes,
 units of measure, hierarchical categories, brands, tax rates, and the existing
 organization and access records. It retains all Phase 2-7 behavior.
 
-Phases 5A, 5B, 5C, 6, 7, and 8 do **not** redesign the database. The approved
+Phases 5A, 5B, 5C, 6, 7, 8, and 9 do **not** redesign the database. The approved
 [`database/schema.sql`](database/schema.sql) and detailed
 [`database/README.md`](database/README.md) remain the authority for the existing
 54 tables.
 
-## Phase 5A through Phase 8 purpose and boundaries
+## Phase 5A through Phase 9 purpose and boundaries
 
 Reference catalog records describe shared business concepts that products will
 reference later. They are organization-wide configuration, not branch stock,
@@ -87,10 +88,14 @@ Phase 7 builds on supplier configuration and includes:
   full Phase 2-6 regression coverage.
 
 Phase 8 adds read-only branch stock, lot, and ledger views plus two operational
-configuration writes: reorder settings and branch lot status. It does not
-create stock or ledger transactions. Stock adjustments, counts, transfers,
-customers, POS/checkout, sales, reports, frontend, and Postman remain excluded.
-Phase 9 — Stock Adjustments, Counts & Transfers has not started.
+configuration writes: reorder settings and branch lot status. Those Phase 8
+writes do not create stock or ledger transactions.
+
+Phase 9 adds controlled adjustment documents, physical-count snapshots and
+reconciliation, and two-stage inter-branch transfers. Every committed stock
+change posts through the existing append-only inventory ledger and updates its
+branch and lot projections in the same transaction. Customers, POS/checkout,
+sales, reports, frontend, and Postman remain excluded.
 
 ## Technology stack
 
@@ -135,7 +140,7 @@ route
 All `/api/admin` routes pass through `authenticate` and
 `requirePasswordChangeCompleted`. Organization-wide administration uses
 `requirePermission(...)`, including every Phase 6 supplier route. Phase 5C
-pricing, Phase 7 purchasing/receiving, and Phase 8 inventory use
+pricing, Phase 7 purchasing/receiving, and Phase 8/9 inventory operations use
 `requireBranchPermission(...)` with the URL branch. A role name never bypasses
 authorization.
 
@@ -166,6 +171,7 @@ supermarket-management-system/
 │   │   ├── employee.controller.js
 │   │   ├── goodsReceipt.controller.js
 │   │   ├── inventory.controller.js
+│   │   ├── inventoryAdjustment.controller.js
 │   │   ├── product.controller.js
 │   │   ├── productBarcode.controller.js
 │   │   ├── productPackage.controller.js
@@ -175,6 +181,8 @@ supermarket-management-system/
 │   │   ├── supplier.controller.js
 │   │   ├── supplierProduct.controller.js
 │   │   ├── supplierProductPackage.controller.js
+│   │   ├── stockCount.controller.js
+│   │   ├── stockTransfer.controller.js
 │   │   ├── taxRate.controller.js
 │   │   ├── unitOfMeasure.controller.js
 │   │   └── userAdmin.controller.js
@@ -184,6 +192,7 @@ supermarket-management-system/
 │   │   ├── errorHandler.js
 │   │   ├── loginRateLimiter.js
 │   │   ├── inventoryBranch.middleware.js
+│   │   ├── inventoryOperationsBranch.middleware.js
 │   │   ├── purchasingBranch.middleware.js
 │   │   └── pricingBranch.middleware.js
 │   ├── repositories/
@@ -199,6 +208,8 @@ supermarket-management-system/
 │   │   ├── employee.repository.js
 │   │   ├── goodsReceipt.repository.js
 │   │   ├── inventoryRead.repository.js
+│   │   ├── inventoryAdjustment.repository.js
+│   │   ├── inventoryMovement.repository.js
 │   │   ├── inventoryWrite.repository.js
 │   │   ├── product.repository.js
 │   │   ├── productBarcode.repository.js
@@ -212,6 +223,8 @@ supermarket-management-system/
 │   │   ├── supplier.repository.js
 │   │   ├── supplierProduct.repository.js
 │   │   ├── supplierProductPackage.repository.js
+│   │   ├── stockCount.repository.js
+│   │   ├── stockTransfer.repository.js
 │   │   ├── taxRate.repository.js
 │   │   ├── unitOfMeasure.repository.js
 │   │   └── userAdmin.repository.js
@@ -228,6 +241,11 @@ supermarket-management-system/
 │   │   │   ├── index.js
 │   │   │   ├── inventory/
 │   │   │   │   └── index.js
+│   │   │   ├── inventoryOperations/
+│   │   │   │   ├── adjustment.routes.js
+│   │   │   │   ├── count.routes.js
+│   │   │   │   ├── index.js
+│   │   │   │   └── transfer.routes.js
 │   │   │   ├── products/
 │   │   │   │   ├── index.js
 │   │   │   │   ├── product.routes.js
@@ -264,6 +282,7 @@ supermarket-management-system/
 │   │   ├── employee.service.js
 │   │   ├── goodsReceipt.service.js
 │   │   ├── inventory.service.js
+│   │   ├── inventoryAdjustment.service.js
 │   │   ├── product.service.js
 │   │   ├── productBarcode.service.js
 │   │   ├── productPackage.service.js
@@ -273,6 +292,8 @@ supermarket-management-system/
 │   │   ├── supplier.service.js
 │   │   ├── supplierProduct.service.js
 │   │   ├── supplierProductPackage.service.js
+│   │   ├── stockCount.service.js
+│   │   ├── stockTransfer.service.js
 │   │   ├── taxRate.service.js
 │   │   ├── unitOfMeasure.service.js
 │   │   └── userAdmin.service.js
@@ -282,6 +303,7 @@ supermarket-management-system/
 │   │   ├── databaseError.js
 │   │   ├── exactDecimal.js
 │   │   ├── httpError.js
+│   │   ├── inventoryQuantity.js
 │   │   ├── jwt.js
 │   │   ├── password.js
 │   │   ├── purchasingDecimal.js
@@ -300,6 +322,11 @@ supermarket-management-system/
 │   │   │   └── unitOfMeasure.validator.js
 │   │   ├── inventory/
 │   │   │   └── inventory.validator.js
+│   │   ├── inventoryOperations/
+│   │   │   ├── common.validator.js
+│   │   │   ├── inventoryAdjustment.validator.js
+│   │   │   ├── stockCount.validator.js
+│   │   │   └── stockTransfer.validator.js
 │   │   ├── products/
 │   │   │   ├── common.validator.js
 │   │   │   ├── product.validator.js
@@ -327,6 +354,7 @@ supermarket-management-system/
 │   ├── auth.integration.test.js
 │   ├── catalogReference.integration.test.js
 │   ├── inventory.integration.test.js
+│   ├── inventoryOperations.integration.test.js
 │   ├── pricing.integration.test.js
 │   ├── productCatalog.integration.test.js
 │   ├── purchasing.integration.test.js
@@ -339,7 +367,8 @@ supermarket-management-system/
 └── README.md
 ```
 
-`inventory.integration.test.js` exercises Phase 8 against MySQL,
+`inventoryOperations.integration.test.js` exercises Phase 9 against MySQL,
+`inventory.integration.test.js` retains Phase 8 coverage,
 `purchasing.integration.test.js` retains Phase 7 coverage,
 `supplierCatalog.integration.test.js` retains Phase 6 coverage,
 `pricing.integration.test.js` retains Phase 5C coverage,
@@ -434,7 +463,7 @@ Permissions are application-defined capabilities. A permission code is useful
 only because application routes check that exact code, so administrators cannot
 invent permission definitions through the HTTP API.
 
-The idempotent catalog contains 24 canonical Phase 4-8 permissions:
+The idempotent catalog contains 30 canonical Phase 4-9 permissions:
 
 | Permission code | Meaning |
 | --- | --- |
@@ -462,6 +491,12 @@ The idempotent catalog contains 24 canonical Phase 4-8 permissions:
 | `receiving.manage` | Create, edit, cancel, and atomically post branch goods receipts in Phase 7 |
 | `inventory.read` | View branch stock projections, branch lots, and stock-ledger history in Phase 8 |
 | `inventory.manage` | Configure reorder settings and branch lot operational state in Phase 8 |
+| `inventory_adjustments.read` | View branch adjustment documents and ledger evidence in Phase 9 |
+| `inventory_adjustments.manage` | Create, approve, post, and cancel branch adjustments in Phase 9 |
+| `stock_counts.read` | View physical counts, variances, and reconciliation evidence in Phase 9 |
+| `stock_counts.manage` | Configure, conduct, complete, post, and cancel physical counts in Phase 9 |
+| `stock_transfers.read` | View transfers involving an authorized branch in Phase 9 |
+| `stock_transfers.manage` | Create, progress, dispatch, receive, and cancel stock transfers in Phase 9 |
 
 The seed inserts missing canonical permissions, reconciles their human-readable
 metadata, preserves unrelated permissions and roles, ensures the
@@ -508,6 +543,18 @@ a global role nor `SYSTEM_ADMIN` bypasses the active linked-employee requirement
 for writes. Catalog, product, pricing, supplier, purchasing, or receiving
 permissions do not imply inventory access; `inventory.manage` does not imply
 `inventory.read`.
+
+Phase 9 permissions are deliberately separate from `inventory.*`:
+`inventory_adjustments.read/manage`, `stock_counts.read/manage`, and
+`stock_transfers.read/manage` authorize only their matching resources. A global
+grant may satisfy permission scope at any branch; a branch-scoped grant only at
+that exact branch. The separate employee-assignment gate still applies to every
+employee-linked user for either kind of grant. All writes additionally require
+an active linked employee with a current assignment and revalidate that actor
+inside the mutation transaction; unlinked system accounts remain read-only.
+Transfer source actions use the source URL branch, while receipt uses the
+destination URL branch. Transfer reads expose a document only when the URL
+branch is its source or destination.
 
 If `SYSTEM_ADMIN` already exists but is inactive, the seed deliberately leaves
 it inactive and prints a warning instead of silently reversing an emergency or
@@ -1375,10 +1422,184 @@ are `BRANCH_INVENTORY_SETTINGS_CREATED`,
 includes user, linked employee, branch, request, network context, and safe
 before/after values. GETs, failed writes, and no-ops produce no Phase 8 audit.
 
-There is no Phase 8 endpoint to edit on-hand quantities, create/modify/delete
-ledger entries, change global lot status, or run adjustments, counts, or
-transfers. Receipt posting remains the only implemented stock movement. Phase 9
-— Stock Adjustments, Counts & Transfers has not started.
+There is still no endpoint to set on-hand quantity directly, to create/edit/delete
+generic ledger rows, or to change global lot status. Phase 9 stock changes are
+available only through the controlled business-document workflows below.
+
+## Phase 9 stock adjustments, counts, and transfers
+
+Phase 9 exposes exactly 38 routes below
+`/api/admin/branches/:branchId`. There are no document-header DELETE routes and
+no aliases.
+
+### Inventory-adjustment routes (11)
+
+| Method and suffix | Permission | Purpose |
+| --- | --- | --- |
+| `GET /inventory-adjustments` | `inventory_adjustments.read` | Paginated branch adjustments |
+| `POST /inventory-adjustments` | `inventory_adjustments.manage` | Create a `DRAFT` adjustment |
+| `GET /inventory-adjustments/:inventoryAdjustmentId` | `inventory_adjustments.read` | Header, items, and lot evidence |
+| `PATCH /inventory-adjustments/:inventoryAdjustmentId` | `inventory_adjustments.manage` | Edit a draft header |
+| `POST /inventory-adjustments/:inventoryAdjustmentId/items` | `inventory_adjustments.manage` | Add a signed movement line |
+| `PATCH /inventory-adjustments/:inventoryAdjustmentId/items/:inventoryAdjustmentItemId` | `inventory_adjustments.manage` | Edit a draft line/allocation |
+| `DELETE /inventory-adjustments/:inventoryAdjustmentId/items/:inventoryAdjustmentItemId` | `inventory_adjustments.manage` | Remove a draft line |
+| `POST /inventory-adjustments/:inventoryAdjustmentId/approve` | `inventory_adjustments.manage` | `DRAFT -> APPROVED` |
+| `POST /inventory-adjustments/:inventoryAdjustmentId/post` | `inventory_adjustments.manage` | Atomically post one `ADJUSTMENT` ledger event |
+| `POST /inventory-adjustments/:inventoryAdjustmentId/cancel` | `inventory_adjustments.manage` | Cancel an eligible unposted document |
+| `GET /inventory-adjustments/:inventoryAdjustmentId/ledger` | `inventory_adjustments.read` | Linked ledger summary |
+
+Create accepts only `adjustmentType` and a required `reason`. Supported types
+come directly from the frozen schema: `COUNT_CORRECTION`, `DAMAGE`, `EXPIRY`,
+`THEFT`, `SUPPLIER_RETURN`, and `OTHER`. A line accepts immutable
+`productVariantId`, signed nonzero `quantityChange`, nullable `unitCost`, an
+optional reason, and optional existing-lot allocations. Positive means stock-in;
+negative means stock-out. Approval requires at least one valid line and a
+different employee from the creator, but changes no stock. Posting changes
+`APPROVED -> POSTED`, creates exactly one linked `ADJUSTMENT` transaction, and
+updates balances and lot balances atomically. Posted documents are immutable;
+a later correction uses another append-only adjustment.
+
+### Physical stock-count routes (15)
+
+| Method and suffix | Permission | Purpose |
+| --- | --- | --- |
+| `GET /stock-counts` | `stock_counts.read` | Paginated branch counts |
+| `POST /stock-counts` | `stock_counts.manage` | Create a count definition |
+| `GET /stock-counts/:stockCountId` | `stock_counts.read` | Count, participants, items, and reconciliation |
+| `PATCH /stock-counts/:stockCountId` | `stock_counts.manage` | Edit a draft count header |
+| `POST /stock-counts/:stockCountId/participants` | `stock_counts.manage` | Add an active assigned employee |
+| `DELETE /stock-counts/:stockCountId/participants/:employeeId` | `stock_counts.manage` | Remove a draft participant |
+| `POST /stock-counts/:stockCountId/items` | `stock_counts.manage` | Add a variant/lot count scope |
+| `PATCH /stock-counts/:stockCountId/items/:stockCountItemId` | `stock_counts.manage` | Enter counted quantity and variance reason |
+| `DELETE /stock-counts/:stockCountId/items/:stockCountItemId` | `stock_counts.manage` | Remove a draft count item |
+| `POST /stock-counts/:stockCountId/start` | `stock_counts.manage` | Capture locked authoritative snapshots |
+| `POST /stock-counts/:stockCountId/complete` | `stock_counts.manage` | Freeze a fully counted session |
+| `POST /stock-counts/:stockCountId/post` | `stock_counts.manage` | Reconcile through one count correction |
+| `POST /stock-counts/:stockCountId/cancel` | `stock_counts.manage` | Cancel an eligible unposted count |
+| `GET /stock-counts/:stockCountId/variance` | `stock_counts.read` | Read exact snapshot/count/variance data |
+| `GET /stock-counts/:stockCountId/ledger` | `stock_counts.read` | Read linked adjustment/ledger evidence |
+
+Counts use `DRAFT -> IN_PROGRESS -> COUNTED -> POSTED` or an allowed pre-post
+`CANCELLED` transition. `start` requires at least one item and captures balances
+under row locks; it does not move stock. `countedQuantity` is an absolute
+physical amount. MySQL's stored generated column represents exact
+`counted - system` variance, and a nonzero variance requires a reason.
+`complete` requires every item to be counted and still does not move stock.
+
+The frozen schema has no separate approve endpoint but requires approval fields
+on `POSTED`. Consequently, `post` is the approval/finalization boundary: its
+actor must differ from the creator and is stored as both approver and poster.
+Nonzero variances create and fully post one linked `COUNT_CORRECTION` adjustment;
+that adjustment creates the single `ADJUSTMENT` ledger effect. An all-zero count
+is finalized without a meaningless zero ledger row or adjustment link.
+
+Lot scopes follow the schema rather than inventing extra tables. `NONE` uses the
+branch-level null-lot scope. `REQUIRED` needs complete per-lot scope for every
+positive stocked lot, and its total must remain fully lot-backed. `OPTIONAL` may
+combine explicit lot scopes with a null-lot item representing the exact
+untracked remainder. At post, every relevant current scope is compared with its
+start snapshot. Any intervening receipt, adjustment, or transfer makes the count
+stale and returns `409`; Phase 9 never applies a stale variance over legitimate
+stock activity. An offsetting, zero-total lot reallocation is rejected because
+the frozen adjustment schema forbids zero adjustment lines.
+
+### Inter-branch transfer routes (12)
+
+| Method and suffix | Permission | Purpose |
+| --- | --- | --- |
+| `GET /stock-transfers` | `stock_transfers.read` | Transfers involving the URL branch |
+| `POST /stock-transfers` | `stock_transfers.manage` | Create a source-branch draft |
+| `GET /stock-transfers/:stockTransferId` | `stock_transfers.read` | Full document, lot, and dual-ledger evidence |
+| `PATCH /stock-transfers/:stockTransferId` | `stock_transfers.manage` | Edit destination/notes while draft |
+| `POST /stock-transfers/:stockTransferId/items` | `stock_transfers.manage` | Add a requested variant and planned lots |
+| `PATCH /stock-transfers/:stockTransferId/items/:stockTransferItemId` | `stock_transfers.manage` | Edit a draft line |
+| `DELETE /stock-transfers/:stockTransferId/items/:stockTransferItemId` | `stock_transfers.manage` | Remove a draft line |
+| `POST /stock-transfers/:stockTransferId/request` | `stock_transfers.manage` | `DRAFT -> REQUESTED` at source |
+| `POST /stock-transfers/:stockTransferId/approve` | `stock_transfers.manage` | `REQUESTED -> APPROVED` at source |
+| `POST /stock-transfers/:stockTransferId/dispatch` | `stock_transfers.manage` | Source stock-out and `TRANSFER_OUT` |
+| `POST /stock-transfers/:stockTransferId/receive` | `stock_transfers.manage` | Destination stock-in and `TRANSFER_IN` |
+| `POST /stock-transfers/:stockTransferId/cancel` | `stock_transfers.manage` | Cancel before dispatch at source |
+
+Create derives `sourceBranchId` from the URL and accepts only a different
+`destinationBranchId` plus optional notes. Draft lines preserve requested,
+dispatched, and received quantities separately. Request and approval freeze
+content but move no stock. Dispatch accepts every line's explicit
+`quantityDispatched` and lot quantities, allows a quantity not exceeding the
+request, subtracts source stock, and links exactly one negative `TRANSFER_OUT`
+transaction. Receipt must use the destination URL branch, accepts every line's
+explicit quantity not exceeding dispatch, increments destination balances, and
+links exactly one positive `TRANSFER_IN` transaction. A short receipt remains a
+visible discrepancy; it is not silently returned or adjusted. Source stock is
+absent from on-hand inventory while in transit, and there is no fake transit
+branch.
+
+Lot-tracked transfers preserve the same global `inventory_lot_id` at both
+branches. Dispatch requires sufficient source lot stock and rejects expired,
+recalled, closed, blocked, or quarantined outbound lots. Receipt never turns an
+unsafe lot into available stock: an existing stricter destination state is
+preserved, a safe active unexpired lot may become available, and an expired or
+globally unsafe identity remains blocked/rejected. `IN_TRANSIT` and `RECEIVED`
+documents cannot be cancelled because dispatch history is append-only.
+
+### Exact arithmetic, transactions, and concurrency
+
+All IDs cross the API as decimal strings and all quantities/costs remain exact
+decimal strings. Validators reject JSON numbers, exponent notation, overflow,
+excess scale, zero movements, and fractional base quantities for nonfractional
+variants. Internal quantity arithmetic uses scaled `BigInt`; JavaScript
+floating point is never used for inventory decisions. List endpoints use fixed
+filters, deterministic ordering, page 1/limit 20 defaults, and a maximum limit
+of 100.
+
+Every stock posting runs on one borrowed connection and either commits its
+business document, ledger, projections, and audit together or rolls everything
+back. The cross-phase lock family is: operational employee; participating
+branches in ascending ID order; assignment at the operation branch; products,
+variants, and packages in sorted ID order; the document and lines; global lots;
+branch inventory; then branch lot inventory. This matches receipt/settings/lot
+state ordering and serializes adjustment, count, transfer, receipt, reorder, and
+lot-status races. Locked current balances prevent negatives and duplicate
+POST/DISPATCH/RECEIVE requests cannot create a second stock effect.
+
+The branch projection is a fast current total; the ledger remains historical
+authority. A positive movement may create a missing branch projection without
+overwriting reorder settings. A negative movement against a missing/insufficient
+projection is `409`. Required-lot totals are checked before commit. Ledger signs
+are preserved: adjustment lines retain their sign, transfer-out lines and lot
+allocations are negative, and transfer-in lines and allocations are positive.
+Historical unit cost is explicit or `NULL`; selling price and current supplier
+cost are never substituted.
+
+Expected request failures use `400` for malformed input, `401` for missing or
+invalid authentication, `403` for permission/password/operational-actor denial,
+`404` for absence or wrong branch ownership, and `409` for lifecycle,
+segregation, stock, lot-safety, stale-snapshot, duplicate-action, or concurrency
+conflicts. Responses never expose SQL, constraints, credentials, or stacks.
+
+### Phase 9 audit vocabulary
+
+Successful mutations write an audit row in their own transaction; GETs,
+no-op PATCHes, rejected writes, and rolled-back writes do not. The exact Phase 9
+actions are:
+
+- adjustments: `INVENTORY_ADJUSTMENT_CREATED`, `INVENTORY_ADJUSTMENT_UPDATED`,
+  `INVENTORY_ADJUSTMENT_ITEM_CREATED`, `INVENTORY_ADJUSTMENT_ITEM_UPDATED`,
+  `INVENTORY_ADJUSTMENT_ITEM_DELETED`, `INVENTORY_ADJUSTMENT_APPROVED`,
+  `INVENTORY_ADJUSTMENT_POSTED`, `INVENTORY_ADJUSTMENT_CANCELLED`;
+- counts: `STOCK_COUNT_CREATED`, `STOCK_COUNT_UPDATED`,
+  `STOCK_COUNT_PARTICIPANT_ADDED`, `STOCK_COUNT_PARTICIPANT_REMOVED`,
+  `STOCK_COUNT_ITEM_CREATED`, `STOCK_COUNT_ITEM_UPDATED`,
+  `STOCK_COUNT_ITEM_DELETED`, `STOCK_COUNT_STARTED`,
+  `STOCK_COUNT_COMPLETED`, `STOCK_COUNT_POSTED`, `STOCK_COUNT_CANCELLED`; and
+- transfers: `STOCK_TRANSFER_CREATED`, `STOCK_TRANSFER_UPDATED`,
+  `STOCK_TRANSFER_ITEM_CREATED`, `STOCK_TRANSFER_ITEM_UPDATED`,
+  `STOCK_TRANSFER_ITEM_DELETED`, `STOCK_TRANSFER_REQUESTED`,
+  `STOCK_TRANSFER_APPROVED`, `STOCK_TRANSFER_DISPATCHED`,
+  `STOCK_TRANSFER_RECEIVED`, `STOCK_TRANSFER_CANCELLED`.
+
+Transfer audit branch context is source for create/edit/request/approve/dispatch/
+cancel and destination for receipt. Safe snapshots retain both branch IDs and
+request context without secrets, tokens, SQL, or credentials.
 
 ## Reference catalog behavior
 
@@ -1612,7 +1833,7 @@ Duplicate IDs are rejected. The repository locks the role, verifies every ID,
 preserves bridge rows already present, deletes removed `role_permissions`, inserts
 new ones, and audits sorted before/after permission codes in one transaction. An
 empty array intentionally removes every permission from an ordinary role. It is
-rejected for `SYSTEM_ADMIN` unless all 24 canonical permissions remain.
+rejected for `SYSTEM_ADMIN` unless all 30 canonical permissions remain.
 
 ## Global and branch-scoped user roles
 
@@ -1725,7 +1946,7 @@ Run the complete suite against the configured local/development database:
 npm test
 ```
 
-The complete Phase 2-8 validation run covers:
+The complete Phase 2-9 validation run covers:
 
 - Phase 2 health, database health, JSON 404, and graceful SIGINT/SIGTERM;
 - Phase 3 login, JWT enforcement, password-change gating, current account state,
@@ -1772,7 +1993,12 @@ The complete Phase 2-8 validation run covers:
   quantities and signed historical costs, projection/lot/ledger filters,
   read-only consistency diagnostics, strict settings and lot-state writes,
   no-op/failed-write audit suppression, receipt races, boundary-method absence,
-  and zero unrelated catalog/pricing/supplier/document mutation; and
+  and zero unrelated catalog/pricing/supplier/document mutation;
+- Phase 9's exact 38-route matrix, six isolated permissions, operational actor
+  rules, adjustment segregation and signed ledger posting, count snapshots and
+  stale-count rejection, lot-preserving partial transfer dispatch/receipt,
+  duplicate-action protection, competing negative adjustments, audit
+  boundaries, and absence of generic stock/ledger/customer routes; and
 - exact reverse-FK cleanup of uniquely identified `TEST_*` access-control,
   organization, product-dependency, reference-catalog, pricing, bridge, and
   audit rows.
@@ -1791,17 +2017,19 @@ and deletes their exact reverse-FK closure after testing. Phase 8 creates
 isolated `TEST_P8_*` organization/catalog prerequisites and posts actual Phase 7
 receipts for stock history; one direct SQL ledger row tests negative/null read
 preservation. Every suite removes its temporary rows in reverse foreign-key
-order. No suite operates real development records or implements Phase 9
-adjustments/counts/transfers, POS, sales, returns, or payments.
+order. Phase 9 creates isolated `TEST_P9_*` organization/catalog/stock
+prerequisites, performs stock changes only through Phase 9 APIs, and verifies
+exact reverse-FK cleanup. No suite operates real development records or
+implements customers, POS, sales, returns, or payments.
 
-The latest local validation on 2026-09-13 passed all 96 discovered test entries:
-the 82 retained Phase 2-7 entries plus 14 Phase 8 entries. It confirmed the
-active `supermarket_management` database with 54 tables on MySQL 8.0.46, 24
-canonical permissions, one active `SYSTEM_ADMIN` role with all 24 canonical
-mappings, and zero remaining `TEST_P8_*` fixtures in the checked tables. The
-full run completed with 96 passed, 0 failed, 0 skipped, and 0 cancelled in
-26,496.484968 ms. Results are environment-specific, so run `npm test` again
-after relevant code, configuration, or database changes.
+The latest validation result is recorded after the full Phase 9 regression run.
+It confirms the active `supermarket_management` database with its frozen 54
+tables, 30 canonical permissions, one active `SYSTEM_ADMIN` role with all 30
+canonical mappings, and no remaining `TEST_P9_*` fixtures. The focused Phase 9
+run discovered 18 tests: 18 passed, 0 failed, 0 skipped, and 0 cancelled in
+4,569.312791 ms. The full regression discovered 114 tests: 114 passed, 0 failed,
+0 skipped, and 0 cancelled in 31,719.111251 ms. Results are environment-specific,
+so run `npm test` again after relevant code, configuration, or database changes.
 
 Quick Phase 2 smoke checks after startup:
 
@@ -1898,5 +2126,6 @@ Phase 5C stops after branch price configuration and read-only effective-price
 resolution. Phase 6 stops after supplier master and supplier catalog
 configuration. Phase 7 stops after purchase-order administration and atomic
 purchase-receipt stock posting. Phase 8 stops after branch stock/lot/ledger
-reads and reorder/branch-lot-status configuration. Phase 9 — Stock Adjustments,
-Counts & Transfers was NOT started.
+reads and reorder/branch-lot-status configuration. Phase 9 stops after stock
+adjustments, physical stock counts, and inter-branch stock transfers. Phase 10
+customers and customer accounts has not started.

@@ -126,6 +126,36 @@ const ACCESS_CONTROL_PERMISSIONS = Object.freeze(
       name: 'Manage Inventory Configuration',
       description: 'Set branch reorder configuration and branch lot operational state without changing stock quantities.',
     },
+    {
+      code: 'inventory_adjustments.read',
+      name: 'Read Inventory Adjustments',
+      description: 'View branch inventory adjustment documents and their ledger evidence.',
+    },
+    {
+      code: 'inventory_adjustments.manage',
+      name: 'Manage Inventory Adjustments',
+      description: 'Create, approve, post, and cancel controlled branch inventory adjustments.',
+    },
+    {
+      code: 'stock_counts.read',
+      name: 'Read Stock Counts',
+      description: 'View branch physical stock counts and variance evidence.',
+    },
+    {
+      code: 'stock_counts.manage',
+      name: 'Manage Stock Counts',
+      description: 'Create, conduct, reconcile, post, and cancel branch stock counts.',
+    },
+    {
+      code: 'stock_transfers.read',
+      name: 'Read Stock Transfers',
+      description: 'View stock transfers involving an authorized branch.',
+    },
+    {
+      code: 'stock_transfers.manage',
+      name: 'Manage Stock Transfers',
+      description: 'Create, dispatch, receive, and cancel controlled inter-branch stock transfers.',
+    },
   ].map((permission) => Object.freeze(permission)),
 );
 

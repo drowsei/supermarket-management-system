@@ -81,9 +81,9 @@ async function createFixture(fixture) {
   try {
     await connection.beginTransaction();
     const seed = await ensureAccessControl(connection);
-    assert.equal(seed.permissionCount, 24);
-    assert.equal(seed.assignedPermissionCount, 24);
-    assert.equal(ACCESS_CONTROL_PERMISSIONS.length, 24);
+    assert.equal(seed.permissionCount, 30);
+    assert.equal(seed.assignedPermissionCount, 30);
+    assert.equal(ACCESS_CONTROL_PERMISSIONS.length, 30);
     const [permissionRows] = await connection.execute(
       `SELECT CAST(permission_id AS CHAR) AS id, permission_code AS code
        FROM permissions WHERE permission_code IN (${placeholders(ACCESS_CONTROL_PERMISSIONS)})`,
@@ -1027,7 +1027,7 @@ test('Phase 8 inventory engine', { timeout: TIMEOUT_MS }, async (t) => {
       assert.equal(Number(ledger[0].count), 1);
     });
 
-    await t.test('no stock/ledger or Phase 9 mutation route is mounted', async () => {
+    await t.test('no direct stock or generic ledger mutation route is mounted', async () => {
       for (const [method, path] of [
         ['POST', root], ['PATCH', `${root}/variants/${fixture.requiredVariantId}`],
         ['DELETE', `${root}/variants/${fixture.requiredVariantId}`],
@@ -1035,9 +1035,6 @@ test('Phase 8 inventory engine', { timeout: TIMEOUT_MS }, async (t) => {
         ['PATCH', `${root}/transactions/${fixture.transactionId}`],
         ['DELETE', `${root}/transactions/${fixture.transactionId}`],
         ['POST', `${root}/lots`], ['DELETE', `${root}/lots/${fixture.requiredLotId}`],
-        ['GET', `/api/admin/branches/${fixture.branchId}/inventory-adjustments`],
-        ['GET', `/api/admin/branches/${fixture.branchId}/stock-counts`],
-        ['GET', `/api/admin/branches/${fixture.branchId}/stock-transfers`],
       ]) status(await send(fixture, baseUrl, path, { method }), 404);
     });
 

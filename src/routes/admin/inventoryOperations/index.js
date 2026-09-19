@@ -1,0 +1,11 @@
+import { Router } from 'express';
+import { loadInventoryOperationsBranch } from '../../../middleware/inventoryOperationsBranch.middleware.js';
+import adjustmentRouter from './adjustment.routes.js';
+import countRouter from './count.routes.js';
+import transferRouter from './transfer.routes.js';
+const router = Router({ mergeParams: true });
+router.use(loadInventoryOperationsBranch);
+router.use('/inventory-adjustments', adjustmentRouter);
+router.use('/stock-counts', countRouter);
+router.use('/stock-transfers', transferRouter);
+export default router;
