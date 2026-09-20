@@ -106,6 +106,11 @@ function quantityScaled(value) {
   return BigInt(`${whole}${fraction.padEnd(3, '0')}`);
 }
 
+function futureUtcTimestamp(hours = 24) {
+  const date = new Date(Date.now() + hours * 60 * 60 * 1000);
+  return date.toISOString().replace('Z', '000Z');
+}
+
 async function branchQuantity(branchId, productVariantId) {
   const [rows] = await pool.execute(
     `SELECT quantity_on_hand AS quantity FROM branch_inventory
@@ -1249,7 +1254,7 @@ test('Phase 7 purchasing and stock receiving integration', { timeout: TEST_TIMEO
         method: 'POST',
         body: {
           supplierId: fixture.supplierId,
-          expectedAt: '2026-09-20T10:00:00.000000Z',
+          expectedAt: futureUtcTimestamp(),
           supplierQuoteNumber: `QUOTE-${fixture.token}`,
           shippingAmount: '3.00',
           notes: `${fixture.prefix} main`,
