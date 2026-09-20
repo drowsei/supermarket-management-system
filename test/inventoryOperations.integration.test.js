@@ -32,11 +32,11 @@ async function setup(fixture) {
   try {
     await connection.beginTransaction();
     const first = await ensureAccessControl(connection); const second = await ensureAccessControl(connection);
-    assert.deepEqual([first.permissionCount, first.assignedPermissionCount, second.permissionCount, second.assignedPermissionCount], [30, 30, 30, 30]);
-    assert.equal(ACCESS_CONTROL_PERMISSIONS.length, 30);
+    assert.deepEqual([first.permissionCount, first.assignedPermissionCount, second.permissionCount, second.assignedPermissionCount], [32, 32, 32, 32]);
+    assert.equal(ACCESS_CONTROL_PERMISSIONS.length, 32);
     const [roles] = await connection.execute('SELECT CAST(role_id AS CHAR) AS id, is_active AS isActive FROM roles WHERE role_code = ?', [SYSTEM_ADMIN_ROLE.code]);
     assert.equal(roles.length, 1); assert.equal(roles[0].isActive, 1); fixture.systemRoleId = roles[0].id;
-    const [mappings] = await connection.execute('SELECT COUNT(*) AS count FROM role_permissions WHERE role_id = ?', [fixture.systemRoleId]); assert.equal(mappings[0].count, '30');
+    const [mappings] = await connection.execute('SELECT COUNT(*) AS count FROM role_permissions WHERE role_id = ?', [fixture.systemRoleId]); assert.equal(mappings[0].count, '32');
     fixture.branchIds = [];
     for (const [suffix, code] of [['SOURCE', 'S'], ['DEST', 'D'], ['OTHER', 'O']]) {
       await connection.execute(`INSERT INTO branches (branch_code, branch_name, address_line_1, city, country_code, currency_code, timezone, status) VALUES (?, ?, '1 Phase 9 Street', 'Lagos', 'NG', 'NGN', 'Africa/Lagos', 'ACTIVE')`, [`TEST_P9_${code}_${fixture.token.slice(0, 8)}`, `${fixture.prefix} ${suffix}`]);
@@ -651,7 +651,7 @@ test('Phase 9 stock adjustments, counts, and transfers', { timeout: TIMEOUT }, a
 
     await t.test('keeps ledgers append-only, audits committed writes, and exposes no generic write API', async () => {
       const [audit] = await pool.execute(`SELECT action_type AS actionType, COUNT(*) AS count FROM audit_logs WHERE request_id LIKE ? GROUP BY action_type`, [`${fixture.prefix}%`]); const actions = new Set(audit.map((row) => row.actionType)); for (const expected of ['INVENTORY_ADJUSTMENT_POSTED', 'STOCK_COUNT_POSTED', 'STOCK_TRANSFER_DISPATCHED', 'STOCK_TRANSFER_RECEIVED']) assert(actions.has(expected));
-      for (const [method, path] of [['POST', `${root}/inventory/transactions`], ['PATCH', `${root}/inventory/transactions/1`], ['DELETE', `${root}/inventory/transactions/1`], ['PATCH', `${root}/inventory/variants/${fixture.plainVariantId}`], ['DELETE', `${root}/inventory-adjustments/1`], ['DELETE', `${root}/stock-counts/1`], ['DELETE', `${root}/stock-transfers/1`], ['GET', '/api/admin/customers']]) status(await send(fixture, base, path, { method }), 404);
+      for (const [method, path] of [['POST', `${root}/inventory/transactions`], ['PATCH', `${root}/inventory/transactions/1`], ['DELETE', `${root}/inventory/transactions/1`], ['PATCH', `${root}/inventory/variants/${fixture.plainVariantId}`], ['DELETE', `${root}/inventory-adjustments/1`], ['DELETE', `${root}/stock-counts/1`], ['DELETE', `${root}/stock-transfers/1`]]) status(await send(fixture, base, path, { method }), 404);
     });
   } finally {
     await stopServer(server); await cleanup(fixture);

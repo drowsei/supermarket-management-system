@@ -1,9 +1,9 @@
 # Supermarket Management System
 
 A production-oriented, multi-branch supermarket management system built in
-reviewed phases. Phase 9 adds controlled stock adjustments, physical counts,
-and inter-branch transfers on top of the Phase 8 inventory engine and the
-approved 54-table database.
+reviewed phases. Phase 10 adds the global customer master and loyalty identity
+foundation on top of the Phase 9 inventory operations and the approved
+54-table database.
 
 The current API reads branch inventory and historical stock transactions,
 configures reorder settings and branch lot availability, and atomically posts
@@ -15,14 +15,16 @@ per branch, and resolves the currently effective variant or package price. It
 operates products,
 sellable/stockable variants, unit-conversion packages, case-sensitive barcodes,
 units of measure, hierarchical categories, brands, tax rates, and the existing
-organization and access records. It retains all Phase 2-7 behavior.
+organization and access records. It now also administers individual and
+business customer profiles without inventing a financial customer-account
+model. It retains all Phase 2-9 behavior.
 
-Phases 5A, 5B, 5C, 6, 7, 8, and 9 do **not** redesign the database. The approved
+Phases 5A, 5B, 5C, 6, 7, 8, 9, and 10 do **not** redesign the database. The approved
 [`database/schema.sql`](database/schema.sql) and detailed
 [`database/README.md`](database/README.md) remain the authority for the existing
 54 tables.
 
-## Phase 5A through Phase 9 purpose and boundaries
+## Phase 5A through Phase 10 purpose and boundaries
 
 Reference catalog records describe shared business concepts that products will
 reference later. They are organization-wide configuration, not branch stock,
@@ -94,8 +96,17 @@ writes do not create stock or ledger transactions.
 Phase 9 adds controlled adjustment documents, physical-count snapshots and
 reconciliation, and two-stage inter-branch transfers. Every committed stock
 change posts through the existing append-only inventory ledger and updates its
-branch and lot projections in the same transaction. Customers, POS/checkout,
-sales, reports, frontend, and Postman remain excluded.
+branch and lot projections in the same transaction.
+
+Phase 10 adds the organization-wide customer master represented by the frozen
+`customers` table: individual and business profiles, server-owned customer
+numbers, contact and optional loyalty identity, lifecycle status, search,
+filtering, exact lookup, and concurrency-safe audited create/update workflows.
+Customers have no branch ownership. The frozen schema has no customer-balance,
+credit, store-credit, wallet, receivables, loyalty-points, or account-transaction
+model, so Phase 10 does not pretend to provide any financial customer account.
+POS/checkout, sales creation, payments, returns, reports, frontend, and Postman
+remain excluded.
 
 ## Technology stack
 
@@ -139,7 +150,8 @@ route
 
 All `/api/admin` routes pass through `authenticate` and
 `requirePasswordChangeCompleted`. Organization-wide administration uses
-`requirePermission(...)`, including every Phase 6 supplier route. Phase 5C
+`requirePermission(...)`, including every Phase 6 supplier route and every
+Phase 10 customer route. Phase 5C
 pricing, Phase 7 purchasing/receiving, and Phase 8/9 inventory operations use
 `requireBranchPermission(...)` with the URL branch. A role name never bypasses
 authorization.
@@ -167,6 +179,7 @@ supermarket-management-system/
 │   │   ├── branch.controller.js
 │   │   ├── branchVariantPrice.controller.js
 │   │   ├── category.controller.js
+│   │   ├── customer.controller.js
 │   │   ├── effectivePrice.controller.js
 │   │   ├── employee.controller.js
 │   │   ├── goodsReceipt.controller.js
@@ -204,6 +217,7 @@ supermarket-management-system/
 │   │   ├── branch.repository.js
 │   │   ├── branchVariantPrice.repository.js
 │   │   ├── category.repository.js
+│   │   ├── customer.repository.js
 │   │   ├── effectivePrice.repository.js
 │   │   ├── employee.repository.js
 │   │   ├── goodsReceipt.repository.js
@@ -231,6 +245,7 @@ supermarket-management-system/
 │   ├── routes/
 │   │   ├── admin/
 │   │   │   ├── branch.routes.js
+│   │   │   ├── customer.routes.js
 │   │   │   ├── catalog/
 │   │   │   │   ├── brand.routes.js
 │   │   │   │   ├── category.routes.js
@@ -278,6 +293,7 @@ supermarket-management-system/
 │   │   ├── branch.service.js
 │   │   ├── branchVariantPrice.service.js
 │   │   ├── category.service.js
+│   │   ├── customer.service.js
 │   │   ├── effectivePrice.service.js
 │   │   ├── employee.service.js
 │   │   ├── goodsReceipt.service.js
@@ -320,6 +336,8 @@ supermarket-management-system/
 │   │   │   ├── category.validator.js
 │   │   │   ├── taxRate.validator.js
 │   │   │   └── unitOfMeasure.validator.js
+│   │   ├── customer/
+│   │   │   └── customer.validator.js
 │   │   ├── inventory/
 │   │   │   └── inventory.validator.js
 │   │   ├── inventoryOperations/
@@ -353,6 +371,7 @@ supermarket-management-system/
 │   ├── admin.integration.test.js
 │   ├── auth.integration.test.js
 │   ├── catalogReference.integration.test.js
+│   ├── customer.integration.test.js
 │   ├── inventory.integration.test.js
 │   ├── inventoryOperations.integration.test.js
 │   ├── pricing.integration.test.js
@@ -367,7 +386,8 @@ supermarket-management-system/
 └── README.md
 ```
 
-`inventoryOperations.integration.test.js` exercises Phase 9 against MySQL,
+`customer.integration.test.js` exercises Phase 10 against MySQL,
+`inventoryOperations.integration.test.js` retains Phase 9 coverage,
 `inventory.integration.test.js` retains Phase 8 coverage,
 `purchasing.integration.test.js` retains Phase 7 coverage,
 `supplierCatalog.integration.test.js` retains Phase 6 coverage,
@@ -444,7 +464,7 @@ npm run dev
 # Start normally
 npm start
 
-# Seed/reconcile canonical Phase 4/5 access configuration
+# Seed/reconcile canonical Phase 4-10 access configuration
 npm run seed:access
 
 # Secure interactive initial-administrator bootstrap
@@ -463,7 +483,7 @@ Permissions are application-defined capabilities. A permission code is useful
 only because application routes check that exact code, so administrators cannot
 invent permission definitions through the HTTP API.
 
-The idempotent catalog contains 30 canonical Phase 4-9 permissions:
+The idempotent catalog contains 32 canonical Phase 4-10 permissions:
 
 | Permission code | Meaning |
 | --- | --- |
@@ -497,6 +517,8 @@ The idempotent catalog contains 30 canonical Phase 4-9 permissions:
 | `stock_counts.manage` | Configure, conduct, complete, post, and cancel physical counts in Phase 9 |
 | `stock_transfers.read` | View transfers involving an authorized branch in Phase 9 |
 | `stock_transfers.manage` | Create, progress, dispatch, receive, and cancel stock transfers in Phase 9 |
+| `customers.read` | View and search the global customer master in Phase 10 |
+| `customers.manage` | Create and update global customer master records in Phase 10 |
 
 The seed inserts missing canonical permissions, reconciles their human-readable
 metadata, preserves unrelated permissions and roles, ensures the
@@ -555,6 +577,16 @@ inside the mutation transaction; unlinked system accounts remain read-only.
 Transfer source actions use the source URL branch, while receipt uses the
 destination URL branch. Transfer reads expose a document only when the URL
 branch is its source or destination.
+
+Phase 10 uses the global `customers.read` permission for its two GET routes and
+the global `customers.manage` permission for its two mutations. Manage does not
+imply read, read does not imply manage, a branch-scoped grant cannot satisfy
+either global route, and unrelated permission families grant no customer
+access. Customer administration is not a stock-moving operational workflow, so
+an authorized unlinked system account may use it and no employee branch
+assignment is required. `SYSTEM_ADMIN` receives these permissions only through
+the same canonical role mappings as every other permission; there is no role
+name bypass.
 
 If `SYSTEM_ADMIN` already exists but is inactive, the seed deliberately leaves
 it inactive and prints a warning instead of silently reversing an emergency or
@@ -664,6 +696,7 @@ Supported filters:
 | product barcodes | `search`, `barcodeType`, `productPackageId`, `isPrimary` |
 | branch variant prices | `search`, `isActive`, `effectiveStatus` |
 | branch package prices | `search`, `isActive`, `effectiveStatus` |
+| customers | `search`, `customerType`, `status`, `loyaltyNumber`, `email`, `phone` |
 
 Ordering is code-controlled and includes stable ID tie-breakers. Search and
 filters use parameterized values rather than client-supplied SQL fragments.
@@ -1601,6 +1634,103 @@ Transfer audit branch context is source for create/edit/request/approve/dispatch
 cancel and destination for receipt. Safe snapshots retain both branch IDs and
 request context without secrets, tokens, SQL, or credentials.
 
+## Phase 10 customer master
+
+Phase 10 exposes exactly four global administration routes. They are mounted at
+`/api/admin/customers`, not below a branch, and inherit authentication and the
+required-password-change gate from `/api/admin`.
+
+| # | Method and path | Required permission | Purpose |
+| ---: | --- | --- | --- |
+| 1 | `GET /api/admin/customers` | `customers.read` | Paginated customer search and fixed filters |
+| 2 | `POST /api/admin/customers` | `customers.manage` | Create an individual or business customer |
+| 3 | `GET /api/admin/customers/:customerId` | `customers.read` | Exact customer-master detail |
+| 4 | `PATCH /api/admin/customers/:customerId` | `customers.manage` | Partially update profile or lifecycle status |
+
+There is no customer DELETE/restore route, loyalty alias, branch-scoped customer
+route, sales-history route, or account/balance/credit/points/transactions route.
+Customer master data is global; no `branch_id` is invented and employee branch
+assignment is not an access gate. A future sale may reference a customer, but
+historical sale rows are neither read nor rewritten by these routes.
+
+### Customer representation and validation
+
+The API returns `customerId`, `customerNumber`, `customerType`, `firstName`,
+`lastName`, `businessName`, `email`, `phone`, `loyaltyNumber`, `dateOfBirth`,
+`status`, `createdAt`, and `updatedAt`. IDs remain decimal strings and nullable
+database values are returned as `null`. Client JSON uses camelCase and never
+exposes raw database names.
+
+Create requires an explicit `customerType`. An `INDIVIDUAL` final state requires
+meaningful `firstName` and `lastName`; a `BUSINESS` final state requires a
+meaningful `businessName`. The other type's supported name fields are preserved
+when supplied instead of being erased. Optional strings accept either a trimmed,
+nonblank value within the frozen column length or `null`. Email uses the shared
+application validator, phone keeps the client's meaningful trimmed form, and
+neither email nor phone is treated as unique because the schema does not make it
+unique. `dateOfBirth` is a strict valid `YYYY-MM-DD` calendar date; Phase 10 does
+not invent an age or future-date rule.
+
+`customerNumber` is immutable and server-owned. Creation uses a collision-
+resistant UUID-derived value that fits its 32-character column, never a row
+count, maximum ID, or process-local counter. Only a generated-number collision
+is retried within a small bound. Clients may not submit `customerNumber` or any
+server-owned, branch, financial-account, credit, balance, points, or audit field.
+
+`loyaltyNumber` is an optional string, so leading zeroes are preserved. Non-null
+values are unique under the database's `utf8mb4_0900_ai_ci` collation; that
+means comparisons follow MySQL's case/accent-insensitive collation semantics
+rather than an invented case-sensitive API rule. Multiple `NULL` loyalty values
+remain valid. A duplicate returns `409` without exposing MySQL diagnostics.
+
+The only customer types are `INDIVIDUAL` and `BUSINESS`; the only statuses are
+`ACTIVE`, `INACTIVE`, and `BLOCKED`. Status is lifecycle state, not deletion,
+financial standing, or a Phase 10 sales rule. PATCH locks the current row, merges
+only supplied fields with that locked state, validates the resulting type/name
+invariant, and updates only effective changes. Type transitions are allowed only
+when the target-type required names exist. An empty PATCH is `400`; an effective
+no-op returns the current row without touching `updated_at` or writing an audit.
+
+The customer list defaults to page 1/limit 20, caps limit at 100, and orders by
+`customer_number` then `customer_id`. `search` covers customer number, individual
+names, business name, email, phone, and loyalty number. `customerType` and
+`status` are enum filters; `loyaltyNumber`, `email`, and `phone` are optional
+exact filters. Query keys and ORDER BY columns are fixed in code, and all values
+are parameterized. Count and page reads are separate ordinary reads, so a
+concurrent commit between them may change pagination totals; Phase 10 does not
+lock the customer catalog merely to create a list snapshot.
+
+### Customer transactions, concurrency, and audit
+
+Create and PATCH each use one borrowed connection and one transaction. Create
+inserts, re-reads, and audits before commit. PATCH uses `SELECT ... FOR UPDATE`,
+merges against the locked row, revalidates the final state, updates, re-reads,
+and audits before commit. Consequently, concurrent different-field patches do
+not silently overwrite one another, competing type/name transitions can commit
+only valid final states, and the unique loyalty constraint makes exactly one of
+two same-loyalty writes succeed. Expected duplicate conflicts are translated to
+safe `409` responses and every failed transaction rolls back.
+
+The only Phase 10 audit actions are `CUSTOMER_CREATED` and `CUSTOMER_UPDATED`.
+Their safe before/after snapshots contain customer master fields and normal
+request context; they never contain tokens, credentials, or authentication
+secrets. GETs, failed writes, duplicate conflicts, no-op PATCHes, and rolled-back
+writes create no customer audit event. The authenticated user is always kept as
+the actor and an absent linked employee remains `NULL`, never a fabricated ID.
+
+The frozen `sales.customer_id` relationship is optional and restrictive on
+delete. Phase 10 deliberately has no physical customer deletion, leaves any
+historical sale reference unchanged when a customer is patched, and does not
+create a fake permanent walk-in customer: future anonymous sales may continue
+to use `sales.customer_id = NULL`.
+
+This phase is a customer profile and loyalty-identity foundation only. The
+frozen schema has no customer balance, debt, credit limit, receivables, store
+credit, wallet, prepaid balance, loyalty-points balance, rewards transaction, or
+account-statement model. None is simulated in JSON, audit data, or derived from
+sales. POS registers, till sessions, checkout, payments, returns, and stock
+movement remain later-phase work.
+
 ## Reference catalog behavior
 
 ### Units of measure
@@ -1833,7 +1963,7 @@ Duplicate IDs are rejected. The repository locks the role, verifies every ID,
 preserves bridge rows already present, deletes removed `role_permissions`, inserts
 new ones, and audits sorted before/after permission codes in one transaction. An
 empty array intentionally removes every permission from an ordinary role. It is
-rejected for `SYSTEM_ADMIN` unless all 30 canonical permissions remain.
+rejected for `SYSTEM_ADMIN` unless all 32 canonical permissions remain.
 
 ## Global and branch-scoped user roles
 
@@ -1943,10 +2073,11 @@ inserted data is ambiguous.
 Run the complete suite against the configured local/development database:
 
 ```bash
+node --test --test-concurrency=1 test/customer.integration.test.js
 npm test
 ```
 
-The complete Phase 2-9 validation run covers:
+The complete Phase 2-10 validation suite covers:
 
 - Phase 2 health, database health, JSON 404, and graceful SIGINT/SIGTERM;
 - Phase 3 login, JWT enforcement, password-change gating, current account state,
@@ -1998,7 +2129,13 @@ The complete Phase 2-9 validation run covers:
   rules, adjustment segregation and signed ledger posting, count snapshots and
   stale-count rejection, lot-preserving partial transfer dispatch/receipt,
   duplicate-action protection, competing negative adjustments, audit
-  boundaries, and absence of generic stock/ledger/customer routes; and
+  boundaries, and the customer-route absence required at the Phase 9 checkpoint;
+- Phase 10's exact four-route matrix, two isolated global permissions,
+  individual/business final-state validation, server-owned customer numbers,
+  loyalty uniqueness and collation behavior, lifecycle status, fixed search and
+  filters, no-op/audit/rollback boundaries, BIGINT-safe IDs, historical-sale
+  stability, concurrent patch/type/loyalty behavior, and the absence of delete,
+  branch-scoped, financial-account, POS, and sales-creation routes; and
 - exact reverse-FK cleanup of uniquely identified `TEST_*` access-control,
   organization, product-dependency, reference-catalog, pricing, bridge, and
   audit rows.
@@ -2019,17 +2156,26 @@ receipts for stock history; one direct SQL ledger row tests negative/null read
 preservation. Every suite removes its temporary rows in reverse foreign-key
 order. Phase 9 creates isolated `TEST_P9_*` organization/catalog/stock
 prerequisites, performs stock changes only through Phase 9 APIs, and verifies
-exact reverse-FK cleanup. No suite operates real development records or
-implements customers, POS, sales, returns, or payments.
+exact reverse-FK cleanup. Phase 10 creates only unmistakable `TEST_P10_*`
+access-control and customer prerequisites, uses any direct historical-sale row
+only as an isolated FK-stability fixture, and removes its exact reverse-FK
+closure. No suite operates real development records or implements POS, checkout,
+payments, returns, loyalty points, or customer financial accounts.
 
-The latest validation result is recorded after the full Phase 9 regression run.
-It confirms the active `supermarket_management` database with its frozen 54
-tables, 30 canonical permissions, one active `SYSTEM_ADMIN` role with all 30
-canonical mappings, and no remaining `TEST_P9_*` fixtures. The focused Phase 9
-run discovered 18 tests: 18 passed, 0 failed, 0 skipped, and 0 cancelled in
-4,569.312791 ms. The full regression discovered 114 tests: 114 passed, 0 failed,
-0 skipped, and 0 cancelled in 31,719.111251 ms. Results are environment-specific,
-so run `npm test` again after relevant code, configuration, or database changes.
+The approved pre-edit Phase 10 baseline was the full Phase 9 regression: 114
+tests passed, 0 failed, 0 skipped, and 0 cancelled. It confirmed the active
+`supermarket_management` database with its frozen 54 tables and the then-current
+30 canonical permissions/mappings before the two Phase 10 permissions were
+seeded. Results are environment-specific, so run the focused customer suite and
+then `npm test` again after relevant code, configuration, or database changes.
+
+The definitive focused Phase 10 run discovered 12 tests: 12 passed, 0 failed,
+0 skipped, and 0 cancelled in 1,834.576738 ms. The definitive full Phase 2-10
+regression discovered 126 tests: 126 passed, 0 failed, 0 skipped, and 0
+cancelled in 34,017.453603 ms. Final read-only verification confirmed
+`supermarket_management` on MySQL 8.0.46 with 54 base tables, 32 canonical
+permissions, one `SYSTEM_ADMIN` role, all 32 canonical mappings, and zero
+remaining `TEST_P10_*` fixtures.
 
 Quick Phase 2 smoke checks after startup:
 
@@ -2128,4 +2274,6 @@ configuration. Phase 7 stops after purchase-order administration and atomic
 purchase-receipt stock posting. Phase 8 stops after branch stock/lot/ledger
 reads and reorder/branch-lot-status configuration. Phase 9 stops after stock
 adjustments, physical stock counts, and inter-branch stock transfers. Phase 10
-customers and customer accounts has not started.
+stops after global customer master/profile and loyalty-identity administration;
+it does not invent financial customer accounts. Phase 11 — POS Registers & Till
+Sessions was not started.

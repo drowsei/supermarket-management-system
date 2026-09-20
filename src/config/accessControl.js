@@ -156,6 +156,16 @@ const ACCESS_CONTROL_PERMISSIONS = Object.freeze(
       name: 'Manage Stock Transfers',
       description: 'Create, dispatch, receive, and cancel controlled inter-branch stock transfers.',
     },
+    {
+      code: 'customers.read',
+      name: 'Read Customers',
+      description: 'View organization-wide customer master records.',
+    },
+    {
+      code: 'customers.manage',
+      name: 'Manage Customers',
+      description: 'Create and update organization-wide customer master records.',
+    },
   ].map((permission) => Object.freeze(permission)),
 );
 

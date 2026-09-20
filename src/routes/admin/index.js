@@ -4,6 +4,7 @@ import { authenticate } from '../../middleware/auth.middleware.js';
 import { requirePasswordChangeCompleted } from '../../middleware/authorization.middleware.js';
 import branchRouter from './branch.routes.js';
 import catalogRouter from './catalog/index.js';
+import customerRouter from './customer.routes.js';
 import employeeRouter from './employee.routes.js';
 import roleRouter, { permissionRouter } from './role.routes.js';
 import supplierRouter from './suppliers/index.js';
@@ -21,5 +22,6 @@ router.use('/roles', roleRouter);
 router.use('/permissions', permissionRouter);
 router.use('/catalog', catalogRouter);
 router.use('/suppliers', supplierRouter);
+router.use('/customers', customerRouter);
 
 export default router;

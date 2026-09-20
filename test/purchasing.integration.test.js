@@ -120,9 +120,9 @@ async function createFixture(fixture) {
   try {
     await connection.beginTransaction();
     const seed = await ensureAccessControl(connection);
-    assert.equal(seed.permissionCount, 30);
-    assert.equal(seed.assignedPermissionCount, 30);
-    assert.equal(ACCESS_CONTROL_PERMISSIONS.length, 30);
+    assert.equal(seed.permissionCount, 32);
+    assert.equal(seed.assignedPermissionCount, 32);
+    assert.equal(ACCESS_CONTROL_PERMISSIONS.length, 32);
     const [permissionRows] = await connection.execute(
       `SELECT CAST(permission_id AS CHAR) AS id, permission_code AS code
        FROM permissions WHERE permission_code IN (${placeholders(
