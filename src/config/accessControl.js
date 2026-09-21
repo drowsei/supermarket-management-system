@@ -166,6 +166,26 @@ const ACCESS_CONTROL_PERMISSIONS = Object.freeze(
       name: 'Manage Customers',
       description: 'Create and update organization-wide customer master records.',
     },
+    {
+      code: 'pos_registers.read',
+      name: 'Read POS Registers',
+      description: 'View branch POS register configuration.',
+    },
+    {
+      code: 'pos_registers.manage',
+      name: 'Manage POS Registers',
+      description: 'Create and update branch POS register configuration.',
+    },
+    {
+      code: 'till_sessions.read',
+      name: 'Read Till Sessions',
+      description: 'View branch till sessions and their cash movement history.',
+    },
+    {
+      code: 'till_sessions.manage',
+      name: 'Manage Till Sessions',
+      description: 'Operate branch till sessions and record drawer cash movements.',
+    },
   ].map((permission) => Object.freeze(permission)),
 );
 

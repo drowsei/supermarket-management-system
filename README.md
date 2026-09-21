@@ -1,9 +1,9 @@
 # Supermarket Management System
 
 A production-oriented, multi-branch supermarket management system built in
-reviewed phases. Phase 10 adds the global customer master and loyalty identity
-foundation on top of the Phase 9 inventory operations and the approved
-54-table database.
+reviewed phases. Phase 11 adds branch POS-register administration and
+schema-locked till-session/cash-drawer workflows on top of the Phase 10
+customer master and the approved 54-table database.
 
 The current API reads branch inventory and historical stock transactions,
 configures reorder settings and branch lot availability, and atomically posts
@@ -17,14 +17,16 @@ sellable/stockable variants, unit-conversion packages, case-sensitive barcodes,
 units of measure, hierarchical categories, brands, tax rates, and the existing
 organization and access records. It now also administers individual and
 business customer profiles without inventing a financial customer-account
-model. It retains all Phase 2-9 behavior.
+model. It now also configures physical branch registers, opens and controls
+cashier till sessions, records append-only drawer movements, and closes drawers
+against persisted cash evidence. It retains all Phase 2-10 behavior.
 
-Phases 5A, 5B, 5C, 6, 7, 8, 9, and 10 do **not** redesign the database. The approved
+Phases 5A, 5B, 5C, 6, 7, 8, 9, 10, and 11 do **not** redesign the database. The approved
 [`database/schema.sql`](database/schema.sql) and detailed
 [`database/README.md`](database/README.md) remain the authority for the existing
 54 tables.
 
-## Phase 5A through Phase 10 purpose and boundaries
+## Phase 5A through Phase 11 purpose and boundaries
 
 Reference catalog records describe shared business concepts that products will
 reference later. They are organization-wide configuration, not branch stock,
@@ -105,8 +107,16 @@ filtering, exact lookup, and concurrency-safe audited create/update workflows.
 Customers have no branch ownership. The frozen schema has no customer-balance,
 credit, store-credit, wallet, receivables, loyalty-points, or account-transaction
 model, so Phase 10 does not pretend to provide any financial customer account.
-POS/checkout, sales creation, payments, returns, reports, frontend, and Postman
-remain excluded.
+Checkout, sales creation, payment mutation, returns, reports, frontend, and
+Postman remain excluded.
+
+Phase 11 uses the frozen `pos_registers`, `till_sessions`, and
+`till_cash_movements` tables exactly as defined. It adds register configuration,
+cashier session lifecycle control, exact drawer reconciliation, branch-aware
+authorization, operational employee rechecks, transaction-bound audit, and
+concurrency-safe register/session ownership. It reads existing sales and payment
+evidence only when closing a till; it does not create or mutate a sale, payment,
+customer, inventory balance, lot balance, or inventory-ledger record.
 
 ## Technology stack
 
@@ -153,8 +163,10 @@ All `/api/admin` routes pass through `authenticate` and
 `requirePermission(...)`, including every Phase 6 supplier route and every
 Phase 10 customer route. Phase 5C
 pricing, Phase 7 purchasing/receiving, and Phase 8/9 inventory operations use
-`requireBranchPermission(...)` with the URL branch. A role name never bypasses
-authorization.
+`requireBranchPermission(...)` with the URL branch. Phase 11 register and till
+routes use the same branch-aware permission boundary, with an additional
+transactional employee check for operational till writes. A role name never
+bypasses authorization.
 
 ## Project structure
 
@@ -185,6 +197,7 @@ supermarket-management-system/
 │   │   ├── goodsReceipt.controller.js
 │   │   ├── inventory.controller.js
 │   │   ├── inventoryAdjustment.controller.js
+│   │   ├── posRegister.controller.js
 │   │   ├── product.controller.js
 │   │   ├── productBarcode.controller.js
 │   │   ├── productPackage.controller.js
@@ -197,6 +210,7 @@ supermarket-management-system/
 │   │   ├── stockCount.controller.js
 │   │   ├── stockTransfer.controller.js
 │   │   ├── taxRate.controller.js
+│   │   ├── tillSession.controller.js
 │   │   ├── unitOfMeasure.controller.js
 │   │   └── userAdmin.controller.js
 │   ├── middleware/
@@ -206,6 +220,7 @@ supermarket-management-system/
 │   │   ├── loginRateLimiter.js
 │   │   ├── inventoryBranch.middleware.js
 │   │   ├── inventoryOperationsBranch.middleware.js
+│   │   ├── posBranch.middleware.js
 │   │   ├── purchasingBranch.middleware.js
 │   │   └── pricingBranch.middleware.js
 │   ├── repositories/
@@ -225,6 +240,7 @@ supermarket-management-system/
 │   │   ├── inventoryAdjustment.repository.js
 │   │   ├── inventoryMovement.repository.js
 │   │   ├── inventoryWrite.repository.js
+│   │   ├── posRegister.repository.js
 │   │   ├── product.repository.js
 │   │   ├── productBarcode.repository.js
 │   │   ├── productCatalog.repository.js
@@ -240,6 +256,7 @@ supermarket-management-system/
 │   │   ├── stockCount.repository.js
 │   │   ├── stockTransfer.repository.js
 │   │   ├── taxRate.repository.js
+│   │   ├── tillSession.repository.js
 │   │   ├── unitOfMeasure.repository.js
 │   │   └── userAdmin.repository.js
 │   ├── routes/
@@ -261,6 +278,10 @@ supermarket-management-system/
 │   │   │   │   ├── count.routes.js
 │   │   │   │   ├── index.js
 │   │   │   │   └── transfer.routes.js
+│   │   │   ├── pos/
+│   │   │   │   ├── index.js
+│   │   │   │   ├── register.routes.js
+│   │   │   │   └── till.routes.js
 │   │   │   ├── products/
 │   │   │   │   ├── index.js
 │   │   │   │   ├── product.routes.js
@@ -299,6 +320,7 @@ supermarket-management-system/
 │   │   ├── goodsReceipt.service.js
 │   │   ├── inventory.service.js
 │   │   ├── inventoryAdjustment.service.js
+│   │   ├── posRegister.service.js
 │   │   ├── product.service.js
 │   │   ├── productBarcode.service.js
 │   │   ├── productPackage.service.js
@@ -311,6 +333,7 @@ supermarket-management-system/
 │   │   ├── stockCount.service.js
 │   │   ├── stockTransfer.service.js
 │   │   ├── taxRate.service.js
+│   │   ├── tillSession.service.js
 │   │   ├── unitOfMeasure.service.js
 │   │   └── userAdmin.service.js
 │   ├── utils/
@@ -355,6 +378,10 @@ supermarket-management-system/
 │   │   │   ├── branchPackagePrice.validator.js
 │   │   │   ├── branchVariantPrice.validator.js
 │   │   │   └── common.validator.js
+│   │   ├── pos/
+│   │   │   ├── common.validator.js
+│   │   │   ├── posRegister.validator.js
+│   │   │   └── tillSession.validator.js
 │   │   ├── purchasing/
 │   │   │   ├── common.validator.js
 │   │   │   ├── goodsReceipt.validator.js
@@ -374,6 +401,7 @@ supermarket-management-system/
 │   ├── customer.integration.test.js
 │   ├── inventory.integration.test.js
 │   ├── inventoryOperations.integration.test.js
+│   ├── pos.integration.test.js
 │   ├── pricing.integration.test.js
 │   ├── productCatalog.integration.test.js
 │   ├── purchasing.integration.test.js
@@ -464,7 +492,7 @@ npm run dev
 # Start normally
 npm start
 
-# Seed/reconcile canonical Phase 4-10 access configuration
+# Seed/reconcile canonical Phase 4-11 access configuration
 npm run seed:access
 
 # Secure interactive initial-administrator bootstrap
@@ -483,7 +511,7 @@ Permissions are application-defined capabilities. A permission code is useful
 only because application routes check that exact code, so administrators cannot
 invent permission definitions through the HTTP API.
 
-The idempotent catalog contains 32 canonical Phase 4-10 permissions:
+The idempotent catalog contains 36 canonical Phase 4-11 permissions:
 
 | Permission code | Meaning |
 | --- | --- |
@@ -519,6 +547,10 @@ The idempotent catalog contains 32 canonical Phase 4-10 permissions:
 | `stock_transfers.manage` | Create, progress, dispatch, receive, and cancel stock transfers in Phase 9 |
 | `customers.read` | View and search the global customer master in Phase 10 |
 | `customers.manage` | Create and update global customer master records in Phase 10 |
+| `pos_registers.read` | View branch POS-register configuration in Phase 11 |
+| `pos_registers.manage` | Create and update branch POS-register configuration in Phase 11 |
+| `till_sessions.read` | View branch till sessions and cash movements in Phase 11 |
+| `till_sessions.manage` | Open and operate branch till sessions and record cash movements in Phase 11 |
 
 The seed inserts missing canonical permissions, reconciles their human-readable
 metadata, preserves unrelated permissions and roles, ensures the
@@ -587,6 +619,19 @@ an authorized unlinked system account may use it and no employee branch
 assignment is required. `SYSTEM_ADMIN` receives these permissions only through
 the same canonical role mappings as every other permission; there is no role
 name bypass.
+
+Phase 11 deliberately separates register configuration from till operation.
+`pos_registers.read` and `pos_registers.manage` protect register views and
+configuration; `till_sessions.read` protects session/movement views, while
+`till_sessions.manage` protects opening, lifecycle transitions, closing,
+cancelling, and cash-movement creation. A global grant can satisfy permission
+scope for any branch and a branch grant only for its exact URL branch. The
+separate linked-employee assignment gate still applies to every employee-linked
+user for either kind of grant. Register configuration may be performed by an
+authorized unlinked system account. Till writes are operational and always
+require a linked `ACTIVE` employee with a current URL-branch assignment,
+rechecked inside the mutation transaction. An unlinked `SYSTEM_ADMIN` may read
+with the relevant permission but cannot perform those operational writes.
 
 If `SYSTEM_ADMIN` already exists but is inactive, the seed deliberately leaves
 it inactive and prints a warning instead of silently reversing an emergency or
@@ -1728,8 +1773,182 @@ This phase is a customer profile and loyalty-identity foundation only. The
 frozen schema has no customer balance, debt, credit limit, receivables, store
 credit, wallet, prepaid balance, loyalty-points balance, rewards transaction, or
 account-statement model. None is simulated in JSON, audit data, or derived from
-sales. POS registers, till sessions, checkout, payments, returns, and stock
-movement remain later-phase work.
+sales. Phase 10 itself did not implement POS registers or till sessions; Phase
+11 supplies those two foundations, while checkout, sale/payment mutation,
+returns, and sale-driven stock movement remain later-phase work.
+
+## Phase 11 POS registers and till sessions
+
+Phase 11 exposes exactly 13 branch-scoped routes beneath
+`/api/admin/branches/:branchId`. There are no global register/session aliases,
+generic session PATCH routes, DELETE routes, reopen/force-close shortcuts,
+checkout routes, or sale/payment mutation routes.
+
+| # | Method and path | Required permission | Purpose |
+| ---: | --- | --- | --- |
+| 1 | `GET /api/admin/branches/:branchId/pos-registers` | `pos_registers.read` | Paginated branch-register list |
+| 2 | `POST /api/admin/branches/:branchId/pos-registers` | `pos_registers.manage` | Create a branch register |
+| 3 | `GET /api/admin/branches/:branchId/pos-registers/:posRegisterId` | `pos_registers.read` | Exact branch-owned register detail |
+| 4 | `PATCH /api/admin/branches/:branchId/pos-registers/:posRegisterId` | `pos_registers.manage` | Update register configuration or status |
+| 5 | `GET /api/admin/branches/:branchId/till-sessions` | `till_sessions.read` | Paginated branch-session list |
+| 6 | `POST /api/admin/branches/:branchId/pos-registers/:posRegisterId/till-sessions` | `till_sessions.manage` | Open a till session on the register |
+| 7 | `GET /api/admin/branches/:branchId/till-sessions/:tillSessionId` | `till_sessions.read` | Exact branch-owned session detail |
+| 8 | `POST /api/admin/branches/:branchId/till-sessions/:tillSessionId/suspend` | `till_sessions.manage` | Suspend an open drawer |
+| 9 | `POST /api/admin/branches/:branchId/till-sessions/:tillSessionId/resume` | `till_sessions.manage` | Resume a suspended drawer |
+| 10 | `POST /api/admin/branches/:branchId/till-sessions/:tillSessionId/close` | `till_sessions.manage` | Reconcile and close the drawer |
+| 11 | `POST /api/admin/branches/:branchId/till-sessions/:tillSessionId/cancel` | `till_sessions.manage` | Cancel an unused active session |
+| 12 | `GET /api/admin/branches/:branchId/till-sessions/:tillSessionId/cash-movements` | `till_sessions.read` | Paginated append-only drawer-movement history |
+| 13 | `POST /api/admin/branches/:branchId/till-sessions/:tillSessionId/cash-movements` | `till_sessions.manage` | Record a drawer cash movement |
+
+All `BIGINT UNSIGNED` identifiers remain decimal strings, including the maximum
+value `18446744073709551615`. Malformed IDs are `400`; a syntactically valid but
+missing or cross-branch resource is `404`. Register lists support `search`,
+`status`, `page`, and `limit`. Session lists support status/register/cashier/
+opener/closer and opened-date filters. Movement lists support movement type,
+recording employee, and occurrence-date filters. Every list is bounded to a
+maximum page size of 100 and has deterministic ID-tiebroken ordering.
+
+### Frozen register and till semantics
+
+The only register statuses are `ACTIVE`, `INACTIVE`, and `MAINTENANCE`. Register
+code is unique within a branch, while a non-null terminal identifier is unique
+globally. A register may open a till only while `ACTIVE`. PATCH locks its target,
+updates only effective changes, and produces neither a timestamp change nor an
+audit for a no-op. A register with an `OPEN` or `SUSPENDED` session cannot be
+moved away from `ACTIVE`.
+
+The only till statuses are `OPEN`, `SUSPENDED`, `CLOSED`, and `CANCELLED`.
+The frozen generated `active_register_guard` equals `pos_register_id` only for
+`OPEN`/`SUSPENDED` rows; its unique key permits at most one active session per
+register. Likewise, `active_cashier_guard` equals `cashier_employee_id` only for
+those active states and permits at most one active session per cashier. Both
+guards become `NULL` in terminal states. They are database backstops in addition
+to transactional application checks and are never exposed in API responses.
+
+Opening accepts a cashier ID, a non-negative `openingCashAmount`, and optional
+notes. The server generates the session number and timestamp, copies
+`branches.currency_code`, and keeps every close field null. Cashier identity is
+distinct from operational actor identity: `cashier_employee_id` identifies the
+selected employee using the drawer, `opened_by_employee_id` records the
+authenticated actor who opened it, and `closed_by_employee_id` records the
+authenticated actor who closed or cancelled it. Opener, closer, movement actor,
+and cashier need not be the same employee, but each operational actor and the
+selected opening cashier must independently be active and currently assigned
+to the URL branch.
+
+The allowed lifecycle is `OPEN -> SUSPENDED`, `SUSPENDED -> OPEN`, and either
+active state to `CLOSED` or `CANCELLED`. Suspend/resume use empty bodies and do
+not alter immutable session identity, opening cash, currency, notes, or closing
+fields. A suspended session still reserves both register and cashier but pauses
+drawer activity, so it cannot accept a cash movement. `CLOSED` and `CANCELLED`
+are terminal and cannot be resumed, closed/cancelled again, or receive a new
+movement.
+
+All Phase 11 money uses `DECIMAL(19,2)` and API decimal strings. Validation
+rejects JSON numbers, scientific notation, negative values where forbidden,
+excess scale/precision, and malformed values. Business arithmetic uses scaled
+`BigInt`, never binary floating point. Returned money is normalized to exactly
+two decimal places, while a closing difference may be negative.
+
+Cash movements use exactly `CASH_IN`, `CASH_OUT`, `CASH_DROP`, or `PAYOUT`.
+Stored amounts are always strictly positive magnitudes: `CASH_IN` increases the
+drawer expectation and the other three decrease it. The server owns recording
+employee and occurrence time. A non-null reference number is unique only within
+its session; multiple null references and the same reference in another session
+are valid. Movement rows are append-only operational evidence, so there is no
+PATCH or DELETE route.
+
+### Closing, cancellation, and persisted evidence
+
+Close is allowed directly from `OPEN` or `SUSPENDED` and accepts only the
+non-negative physical count `actualClosingCashAmount`. Expected cash is computed
+exactly from persisted evidence:
+
+```text
+expected closing cash
+  = opening cash
+  + completed CASH payments for sales linked to this till
+  - completed CASH refunds for sales linked to this till
+  + CASH_IN
+  - CASH_OUT
+  - CASH_DROP
+  - PAYOUT
+
+cash difference = actual closing cash - expected closing cash
+```
+
+Only `sale_payments.status = 'COMPLETED'` rows whose payment method type is
+`CASH` participate; no sale-status filter is invented. Both ordinary and
+return-linked completed cash refunds reduce expected cash. Every included
+payment currency must equal the session currency. A mismatch, arithmetic
+overflow, or negative expected result is `409`; no currency conversion or
+zero-clamping is attempted. Successful close atomically stores expected,
+actual, signed difference, closer, close timestamp, and `CLOSED` status without
+rewriting any sale or payment.
+
+Cancellation represents an unused aborted drawer. It is allowed from `OPEN` or
+`SUSPENDED` only when the session has no cash movement and no sale reference.
+It sets the closer/time and `CANCELLED` status while leaving expected, actual,
+and difference null. Any movement or sale requires normal reconciliation and
+causes cancellation to return `409`.
+
+### Authorization, locking, concurrency, and audit
+
+Permission scope and employee access remain separate. A global Phase 11 grant
+may satisfy its permission for any branch; a branch grant only for the matching
+URL branch. A linked user also needs a current active assignment for either
+grant. Register administration is configuration, so an authorized unlinked
+system user may perform it. Open, suspend, resume, close, cancel, and movement
+creation are operational writes: they require a linked `ACTIVE` employee with a
+current URL-branch assignment and transactionally recheck that identity. Reads
+remain available to an authorized unlinked system user. Permission success
+never reveals a resource owned by another branch.
+
+The deterministic Phase 11 lock order is: employee IDs in unsigned-BIGINT-
+sorted order, branch, current assignment rows, POS register, till session, till
+cash movements, session-linked sales, sale payments, then payment methods.
+Opening locks both actor/cashier identities and the register before deciding;
+same-register and same-cashier races therefore have one winner, with the frozen
+unique guards as final backstops. Register-status change and opening share the
+register lock. Lifecycle, cancellation, close, and movement creation lock the
+session before deciding, so duplicate close, close-versus-movement, and
+cancel-versus-movement races cannot commit contradictory final states.
+
+Phase 11 writes exactly these transaction-bound audit actions:
+`POS_REGISTER_CREATED`, `POS_REGISTER_UPDATED`, `TILL_SESSION_OPENED`,
+`TILL_SESSION_SUSPENDED`, `TILL_SESSION_RESUMED`, `TILL_SESSION_CLOSED`,
+`TILL_SESSION_CANCELLED`, and `TILL_CASH_MOVEMENT_CREATED`. GETs, failed writes,
+rolled-back races, and no-op register PATCHes write no Phase 11 audit event.
+Snapshots contain safe business state and request context, never guard columns,
+passwords, tokens, credentials, raw SQL, or database diagnostics.
+
+Phase 11 creates or mutates no production sale, sale item, payment, customer,
+inventory, lot, or stock-ledger row. Future Phase 12 sale writers and Phase 13
+payment writers must join the same lock discipline: lock and revalidate the
+target till before committing, require its branch/register/cashier identity to
+match the sale evidence, and require status `OPEN` (not merely
+`SUSPENDED`). They must serialize till -> sales -> payments consistently so a
+close cannot omit a concurrently committed transaction. Phase 11 documents
+that contract but does not implement checkout or payment mutation.
+
+### Phase 11 final validation
+
+The definitive focused Phase 11 run discovered 15 tests: 15 passed, 0 failed,
+0 skipped, and 0 cancelled in 7,003.119072 ms. The definitive full Phase 2-11
+regression discovered 141 tests: 141 passed, 0 failed, 0 skipped, and 0
+cancelled in 66,189.57768 ms. Static JavaScript syntax, application-import, and
+Git whitespace checks passed, and static route inspection confirmed exactly 13
+Phase 11 routes.
+
+Two consecutive access-control seed runs each reported 36 canonical permissions
+assigned to `SYSTEM_ADMIN`. Final read-only verification confirmed the active
+`supermarket_management` database on MySQL 8.0.46 with 54 base tables, 36
+canonical permissions, one `SYSTEM_ADMIN` role, all 36 canonical mappings, and
+zero remaining `TEST_P11_*` fixtures. The frozen schema documents retained
+their approved hashes, package files remained unchanged, and the real `.env`
+remained ignored and untracked.
+
+Phase 12 — Sales / Checkout Engine has not been started by this phase.
 
 ## Reference catalog behavior
 
@@ -1963,7 +2182,7 @@ Duplicate IDs are rejected. The repository locks the role, verifies every ID,
 preserves bridge rows already present, deletes removed `role_permissions`, inserts
 new ones, and audits sorted before/after permission codes in one transaction. An
 empty array intentionally removes every permission from an ordinary role. It is
-rejected for `SYSTEM_ADMIN` unless all 32 canonical permissions remain.
+rejected for `SYSTEM_ADMIN` unless all 36 canonical permissions remain.
 
 ## Global and branch-scoped user roles
 
@@ -2073,11 +2292,12 @@ inserted data is ambiguous.
 Run the complete suite against the configured local/development database:
 
 ```bash
+node --test --test-concurrency=1 test/pos.integration.test.js
 node --test --test-concurrency=1 test/customer.integration.test.js
 npm test
 ```
 
-The complete Phase 2-10 validation suite covers:
+The complete Phase 2-11 validation suite covers:
 
 - Phase 2 health, database health, JSON 404, and graceful SIGINT/SIGTERM;
 - Phase 3 login, JWT enforcement, password-change gating, current account state,
@@ -2135,7 +2355,13 @@ The complete Phase 2-10 validation suite covers:
   loyalty uniqueness and collation behavior, lifecycle status, fixed search and
   filters, no-op/audit/rollback boundaries, BIGINT-safe IDs, historical-sale
   stability, concurrent patch/type/loyalty behavior, and the absence of delete,
-  branch-scoped, financial-account, POS, and sales-creation routes; and
+  branch-scoped, financial-account, POS, and sales-creation routes;
+- Phase 11's exact 13-route matrix, four isolated branch permissions, separate
+  permission-scope and linked-employee assignment gates, register lifecycle and
+  uniqueness, operational actor/cashier checks, active register/cashier guards,
+  till lifecycle and cancellation safety, append-only cash movements, exact
+  persisted-evidence reconciliation, eight audit actions, rollback and
+  concurrency outcomes, and zero unrelated-domain mutation; and
 - exact reverse-FK cleanup of uniquely identified `TEST_*` access-control,
   organization, product-dependency, reference-catalog, pricing, bridge, and
   audit rows.
@@ -2159,8 +2385,11 @@ prerequisites, performs stock changes only through Phase 9 APIs, and verifies
 exact reverse-FK cleanup. Phase 10 creates only unmistakable `TEST_P10_*`
 access-control and customer prerequisites, uses any direct historical-sale row
 only as an isolated FK-stability fixture, and removes its exact reverse-FK
-closure. No suite operates real development records or implements POS, checkout,
-payments, returns, loyalty points, or customer financial accounts.
+closure. Phase 11 creates isolated `TEST_P11_*` access, organization, register,
+till, and minimum sale/payment evidence fixtures, mutates Phase 11 state only
+through its API, and removes the exact reverse-FK closure. No suite operates real
+development records or implements checkout, sale/payment mutation APIs, returns,
+loyalty points, or customer financial accounts.
 
 The approved pre-edit Phase 10 baseline was the full Phase 9 regression: 114
 tests passed, 0 failed, 0 skipped, and 0 cancelled. It confirmed the active
@@ -2176,6 +2405,14 @@ cancelled in 34,017.453603 ms. Final read-only verification confirmed
 `supermarket_management` on MySQL 8.0.46 with 54 base tables, 32 canonical
 permissions, one `SYSTEM_ADMIN` role, all 32 canonical mappings, and zero
 remaining `TEST_P10_*` fixtures.
+
+The definitive focused Phase 11 run discovered 15 tests: 15 passed, 0 failed,
+0 skipped, and 0 cancelled in 7,003.119072 ms. The definitive full Phase 2-11
+regression discovered 141 tests: 141 passed, 0 failed, 0 skipped, and 0
+cancelled in 66,189.57768 ms. Final read-only verification confirmed
+`supermarket_management` on MySQL 8.0.46 with 54 base tables, 36 canonical
+permissions, one `SYSTEM_ADMIN` role, all 36 canonical mappings, and zero
+remaining `TEST_P11_*` fixtures.
 
 Quick Phase 2 smoke checks after startup:
 
@@ -2275,5 +2512,7 @@ purchase-receipt stock posting. Phase 8 stops after branch stock/lot/ledger
 reads and reorder/branch-lot-status configuration. Phase 9 stops after stock
 adjustments, physical stock counts, and inter-branch stock transfers. Phase 10
 stops after global customer master/profile and loyalty-identity administration;
-it does not invent financial customer accounts. Phase 11 — POS Registers & Till
-Sessions was not started.
+it does not invent financial customer accounts. Phase 11 stops after branch POS
+register configuration, till-session lifecycle, cash movements, and exact drawer
+reconciliation; checkout and sale/payment mutation remain Phase 12 and later
+work.
