@@ -181,10 +181,21 @@ const ACCESS_CONTROL_PERMISSIONS = Object.freeze(
       name: 'Read Till Sessions',
       description: 'View branch till sessions and their cash movement history.',
     },
+
     {
       code: 'till_sessions.manage',
       name: 'Manage Till Sessions',
       description: 'Operate branch till sessions and record drawer cash movements.',
+    },
+    {
+      code: 'sales.read',
+      name: 'Read Sales',
+      description: 'View branch sales and their persisted checkout line details.',
+    },
+    {
+      code: 'sales.manage',
+      name: 'Manage Sales',
+      description: 'Create, edit, complete, and cancel branch checkout sales.',
     },
   ].map((permission) => Object.freeze(permission)),
 );

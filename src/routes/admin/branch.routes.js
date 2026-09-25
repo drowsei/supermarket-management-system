@@ -12,10 +12,12 @@ import purchasingRouter from './purchasing/index.js';
 import inventoryRouter from './inventory/index.js';
 import inventoryOperationsRouter from './inventoryOperations/index.js';
 import posRouter from './pos/index.js';
+import salesRouter from './sales/index.js';
 
 const router = Router();
 
 router.get('/', requirePermission('branches.read'), listBranchRecords);
+router.use('/:branchId', salesRouter);
 router.use('/:branchId', posRouter);
 router.use('/:branchId/prices', pricingRouter);
 router.use('/:branchId/inventory', inventoryRouter);

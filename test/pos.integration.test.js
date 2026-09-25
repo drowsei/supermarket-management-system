@@ -142,10 +142,10 @@ async function createFixture(fixture) {
         secondSeed.permissionCount,
         secondSeed.assignedPermissionCount,
       ],
-      [36, 36, 36, 36],
+      [38, 38, 38, 38],
     );
-    assert.equal(ACCESS_CONTROL_PERMISSIONS.length, 36);
-    assert.equal(new Set(ACCESS_CONTROL_PERMISSIONS.map(({ code }) => code)).size, 36);
+    assert.equal(ACCESS_CONTROL_PERMISSIONS.length, 38);
+    assert.equal(new Set(ACCESS_CONTROL_PERMISSIONS.map(({ code }) => code)).size, 38);
 
     const permissionCodes = ACCESS_CONTROL_PERMISSIONS.map(({ code }) => code);
     const [permissionRows] = await connection.execute(
@@ -286,7 +286,7 @@ async function createFixture(fixture) {
          AND p.permission_code IN (${placeholders(permissionCodes)})`,
       [fixture.systemRoleId, ...permissionCodes],
     );
-    assert.equal(mappingRows[0].count, '36');
+    assert.equal(mappingRows[0].count, '38');
 
     const passwordHash = await bcrypt.hash(
       `Phase11-${fixture.token}-Password!`,
@@ -766,7 +766,7 @@ test(
 
         for (const path of [
           '/api/admin/pos-registers', '/api/admin/till-sessions',
-          `${rootA}/checkout`, `${rootA}/sales`, `${rootA}/payments`,
+          `${rootA}/checkout`, `${rootA}/payments`,
         ]) {
           assertStatus(await send(fixture, baseUrl, path, { label: 'ABSENT_GLOBAL' }), 404);
         }

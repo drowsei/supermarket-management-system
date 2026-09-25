@@ -1,9 +1,9 @@
 # Supermarket Management System
 
 A production-oriented, multi-branch supermarket management system built in
-reviewed phases. Phase 11 adds branch POS-register administration and
-schema-locked till-session/cash-drawer workflows on top of the Phase 10
-customer master and the approved 54-table database.
+reviewed phases. Phase 12 adds the branch-scoped sales/checkout engine, exact
+commercial snapshots, and atomic SALE inventory posting on top of the approved
+Phase 11 till workflows and frozen 54-table database.
 
 The current API reads branch inventory and historical stock transactions,
 configures reorder settings and branch lot availability, and atomically posts
@@ -21,12 +21,12 @@ model. It now also configures physical branch registers, opens and controls
 cashier till sessions, records append-only drawer movements, and closes drawers
 against persisted cash evidence. It retains all Phase 2-10 behavior.
 
-Phases 5A, 5B, 5C, 6, 7, 8, 9, 10, and 11 do **not** redesign the database. The approved
+Phases 5A, 5B, 5C, 6, 7, 8, 9, 10, 11, and 12 do **not** redesign the database. The approved
 [`database/schema.sql`](database/schema.sql) and detailed
 [`database/README.md`](database/README.md) remain the authority for the existing
 54 tables.
 
-## Phase 5A through Phase 11 purpose and boundaries
+## Phase 5A through Phase 12 purpose and boundaries
 
 Reference catalog records describe shared business concepts that products will
 reference later. They are organization-wide configuration, not branch stock,
@@ -165,8 +165,10 @@ Phase 10 customer route. Phase 5C
 pricing, Phase 7 purchasing/receiving, and Phase 8/9 inventory operations use
 `requireBranchPermission(...)` with the URL branch. Phase 11 register and till
 routes use the same branch-aware permission boundary, with an additional
-transactional employee check for operational till writes. A role name never
-bypasses authorization.
+transactional employee check for operational till writes. Phase 12 sales routes
+use that branch-aware boundary and require the same transactional operational
+employee check for every checkout write. A role name never bypasses
+authorization.
 
 ## Project structure
 
@@ -204,6 +206,7 @@ supermarket-management-system/
 │   │   ├── productVariant.controller.js
 │   │   ├── purchaseOrder.controller.js
 │   │   ├── role.controller.js
+│   │   ├── sale.controller.js
 │   │   ├── supplier.controller.js
 │   │   ├── supplierProduct.controller.js
 │   │   ├── supplierProductPackage.controller.js
@@ -222,7 +225,8 @@ supermarket-management-system/
 │   │   ├── inventoryOperationsBranch.middleware.js
 │   │   ├── posBranch.middleware.js
 │   │   ├── purchasingBranch.middleware.js
-│   │   └── pricingBranch.middleware.js
+│   │   ├── pricingBranch.middleware.js
+│   │   └── salesBranch.middleware.js
 │   ├── repositories/
 │   │   ├── accessControlSeed.repository.js
 │   │   ├── audit.repository.js
@@ -250,6 +254,8 @@ supermarket-management-system/
 │   │   ├── purchaseReceiptPosting.repository.js
 │   │   ├── purchasing.repository.js
 │   │   ├── role.repository.js
+│   │   ├── sale.repository.js
+│   │   ├── saleCompletion.repository.js
 │   │   ├── supplier.repository.js
 │   │   ├── supplierProduct.repository.js
 │   │   ├── supplierProductPackage.repository.js
@@ -282,6 +288,8 @@ supermarket-management-system/
 │   │   │   │   ├── index.js
 │   │   │   │   ├── register.routes.js
 │   │   │   │   └── till.routes.js
+│   │   │   ├── sales/
+│   │   │   │   └── index.js
 │   │   │   ├── products/
 │   │   │   │   ├── index.js
 │   │   │   │   ├── product.routes.js
@@ -327,6 +335,7 @@ supermarket-management-system/
 │   │   ├── productVariant.service.js
 │   │   ├── purchaseOrder.service.js
 │   │   ├── role.service.js
+│   │   ├── sale.service.js
 │   │   ├── supplier.service.js
 │   │   ├── supplierProduct.service.js
 │   │   ├── supplierProductPackage.service.js
@@ -346,7 +355,8 @@ supermarket-management-system/
 │   │   ├── jwt.js
 │   │   ├── password.js
 │   │   ├── purchasingDecimal.js
-│   │   └── record.js
+│   │   ├── record.js
+│   │   └── salesDecimal.js
 │   ├── validators/
 │   │   ├── admin/
 │   │   │   ├── branch.validator.js
@@ -386,6 +396,10 @@ supermarket-management-system/
 │   │   │   ├── common.validator.js
 │   │   │   ├── goodsReceipt.validator.js
 │   │   │   └── purchaseOrder.validator.js
+│   │   ├── sales/
+│   │   │   ├── common.validator.js
+│   │   │   ├── sale.validator.js
+│   │   │   └── saleItem.validator.js
 │   │   ├── suppliers/
 │   │   │   ├── common.validator.js
 │   │   │   ├── supplier.validator.js
@@ -405,6 +419,7 @@ supermarket-management-system/
 │   ├── pricing.integration.test.js
 │   ├── productCatalog.integration.test.js
 │   ├── purchasing.integration.test.js
+│   ├── sales.integration.test.js
 │   └── supplierCatalog.integration.test.js
 ├── .env
 ├── .env.example
@@ -414,7 +429,9 @@ supermarket-management-system/
 └── README.md
 ```
 
-`customer.integration.test.js` exercises Phase 10 against MySQL,
+`sales.integration.test.js` exercises Phase 12 against MySQL,
+`pos.integration.test.js` retains Phase 11 coverage,
+`customer.integration.test.js` retains Phase 10 coverage,
 `inventoryOperations.integration.test.js` retains Phase 9 coverage,
 `inventory.integration.test.js` retains Phase 8 coverage,
 `purchasing.integration.test.js` retains Phase 7 coverage,
@@ -511,7 +528,7 @@ Permissions are application-defined capabilities. A permission code is useful
 only because application routes check that exact code, so administrators cannot
 invent permission definitions through the HTTP API.
 
-The idempotent catalog contains 36 canonical Phase 4-11 permissions:
+The idempotent catalog contains 38 canonical Phase 4-12 permissions:
 
 | Permission code | Meaning |
 | --- | --- |
@@ -551,6 +568,8 @@ The idempotent catalog contains 36 canonical Phase 4-11 permissions:
 | `pos_registers.manage` | Create and update branch POS-register configuration in Phase 11 |
 | `till_sessions.read` | View branch till sessions and cash movements in Phase 11 |
 | `till_sessions.manage` | Open and operate branch till sessions and record cash movements in Phase 11 |
+| `sales.read` | View branch sales and persisted checkout details in Phase 12 |
+| `sales.manage` | Operate carts and atomically complete or cancel branch sales in Phase 12 |
 
 The seed inserts missing canonical permissions, reconciles their human-readable
 metadata, preserves unrelated permissions and roles, ensures the
@@ -632,6 +651,15 @@ authorized unlinked system account. Till writes are operational and always
 require a linked `ACTIVE` employee with a current URL-branch assignment,
 rechecked inside the mutation transaction. An unlinked `SYSTEM_ADMIN` may read
 with the relevant permission but cannot perform those operational writes.
+
+Phase 12 similarly separates `sales.read` from `sales.manage`. A global grant
+may satisfy permission scope for any branch and a branch-scoped grant only for
+its exact URL branch. The independent employee-assignment gate applies to every
+employee-linked user for either kind of grant. Authorized unlinked system users
+may read sales, but every sale write is operational and revalidates an active
+linked employee with a current URL-branch assignment inside the transaction.
+Neither permission implies the other or any inventory, till, or payment
+permission.
 
 If `SYSTEM_ADMIN` already exists but is inactive, the seed deliberately leaves
 it inactive and prints a warning instead of silently reversing an emergency or
@@ -741,6 +769,7 @@ Supported filters:
 | product barcodes | `search`, `barcodeType`, `productPackageId`, `isPrimary` |
 | branch variant prices | `search`, `isActive`, `effectiveStatus` |
 | branch package prices | `search`, `isActive`, `effectiveStatus` |
+| sales | `search`, `status`, `customerId`, `cashierEmployeeId`, `posRegisterId`, `tillSessionId`, `from`, `to` |
 | customers | `search`, `customerType`, `status`, `loyaltyNumber`, `email`, `phone` |
 
 Ordering is code-controlled and includes stable ID tie-breakers. Search and
@@ -1948,7 +1977,148 @@ zero remaining `TEST_P11_*` fixtures. The frozen schema documents retained
 their approved hashes, package files remained unchanged, and the real `.env`
 remained ignored and untracked.
 
-Phase 12 — Sales / Checkout Engine has not been started by this phase.
+At the Phase 11 checkpoint, Phase 12 — Sales / Checkout Engine had not yet
+been started.
+
+## Phase 12 sales and checkout engine
+
+Phase 12 uses the frozen `sales`, `sale_items`, and `sale_item_lots` tables and
+the existing branch inventory, lot projection, and append-only inventory ledger.
+It adds exactly two canonical permissions, `sales.read` and `sales.manage`, for
+a total of 38. No schema, package dependency, payment, refund, return, void,
+frontend, or Phase 13 implementation is part of this phase.
+
+### Exact routes
+
+All nine routes are branch-scoped below `/api/admin/branches/:branchId`:
+
+| # | Method and path | Permission | Purpose |
+| ---: | --- | --- | --- |
+| 1 | `GET /sales` | `sales.read` | List branch sales using stable pagination and filters |
+| 2 | `POST /till-sessions/:tillSessionId/sales` | `sales.manage` | Open a cart on an OPEN till |
+| 3 | `GET /sales/:saleId` | `sales.read` | Read a sale, ordered items, and final lot allocations |
+| 4 | `PATCH /sales/:saleId` | `sales.manage` | Change an OPEN sale's customer or notes |
+| 5 | `POST /sales/:saleId/items` | `sales.manage` | Add a server-priced item snapshot |
+| 6 | `PATCH /sales/:saleId/items/:saleItemId` | `sales.manage` | Change quantity or discount on an OPEN line |
+| 7 | `DELETE /sales/:saleId/items/:saleItemId` | `sales.manage` | Remove an OPEN line without renumbering others |
+| 8 | `POST /sales/:saleId/complete` | `sales.manage` | Atomically post stock and complete the sale |
+| 9 | `POST /sales/:saleId/cancel` | `sales.manage` | Cancel an OPEN sale without a stock movement |
+
+The list permits exactly `search`, `status`, `customerId`,
+`cashierEmployeeId`, `posRegisterId`, `tillSessionId`, `from`, `to`, `page`,
+and `limit`. Dates filter `sales.created_at`, so OPEN and CANCELLED carts remain
+discoverable. Ordering is `created_at DESC, sale_id DESC`. There is no sale
+DELETE, void, payment, tender, refund, return, reopen, restore, checkout alias,
+barcode-lookup alias, or generic inventory mutation route.
+
+### Authorization and operational identity
+
+A global permission grant satisfies permission scope at any branch; a
+branch-scoped grant satisfies it only at its exact URL branch. The separate
+employee-assignment gate still applies whenever a user is employee-linked,
+regardless of which grant supplied the permission. Reads require no operational
+employee identity, so an authorized unlinked system account may list and inspect
+sales. Every write additionally revalidates, inside its transaction, that the
+actor is linked to an `ACTIVE` employee with a current assignment to the URL
+branch. Consequently an unlinked `SYSTEM_ADMIN` may read but may not operate a
+checkout.
+
+The sale cashier is copied from the locked till session and need not equal the
+authenticated actor. Sale creation and completion also revalidate that cashier
+as `ACTIVE` and currently assigned. New sales, line changes, and completion
+require an `OPEN` till. Cancellation is the deliberate exception: an OPEN sale
+may be cancelled after its till is `SUSPENDED` or `CLOSED`, but not after the
+till itself is `CANCELLED`.
+
+### Cart identity, pricing, tax, and exact arithmetic
+
+Sale numbers are collision-resistant, bounded-retry server values. New sales
+copy branch, register, till, cashier, and currency from the locked till and
+start with zero totals and no stock transaction. An optional customer must be
+`ACTIVE` when selected and is rechecked at completion. Multiple OPEN sales may
+belong to one OPEN till.
+
+A new line accepts exactly one identity mode: an exact case-sensitive barcode,
+or a variant plus an optional package ID. A variant-level barcode or null
+explicit package resolves the variant's single active base package. The current
+product, variant, and package must be active, the package must belong to the
+variant and be sellable, and package quantity follows its unit's fractional
+rule. The stored base quantity is the package quantity multiplied by the exact
+six-place conversion and rounded HALF-UP to three places.
+
+Package price precedence is unchanged from Phase 5C: an active due branch
+package price, then package default, then the effective variant price multiplied
+by package conversion. Effective variant price is an active due branch variant
+price or the variant default. Each line resolution uses one captured database
+UTC timestamp. Product tax comes from `products.tax_rate_id`; no tax means
+`0.0000`. Inclusive shelf prices are converted to a four-place tax-exclusive
+unit price with exact scaled-`BigInt` HALF-UP arithmetic.
+
+For each line, gross is `ROUND_HALF_UP(quantity * unit_price, 2)`, discount may
+not exceed gross, tax is `ROUND_HALF_UP((gross - discount) * rate / 100, 2)`,
+and line total is gross minus discount plus tax. Header subtotal, discount, tax,
+and total are rebuilt from persisted line snapshots after every effective line
+change. IDs and decimals remain strings at the API boundary; business
+arithmetic never uses binary floating point.
+
+Product description, SKU, package name, barcode identity, conversion, unit
+price, and tax rate are commercial snapshots at line creation. Quantity and
+discount PATCHes recalculate derived amounts but never reprice. A no-op sale or
+line PATCH returns the current representation without changing timestamps or
+writing audit evidence.
+
+### Atomic completion, weighted cost, and lots
+
+Completion is the only Phase 12 stock-changing transition. In one transaction
+it locks and revalidates actor/branch/catalog/customer/register/till/sale/items,
+aggregates base quantity per variant, locks inventory, reconstructs valuation,
+allocates eligible lots, creates one `SALE` inventory transaction, writes one
+negative transaction item per sale line and negative lot allocations, decrements
+branch and allocated lot projections, writes positive `sale_item_lots`, snapshots
+four-place unit cost on each sale item, sets `sold_at` and `COMPLETED`, and writes
+`SALE_COMPLETED`. Any failure rolls back every one of those effects.
+
+Because `branch_inventory` has no average-cost column, current weighted-average
+cost is reconstructed from branch/variant ledger history ordered by
+`occurred_at`, transaction ID, line number, and item ID. Positive known-cost
+movements add carrying value; known-cost negative movements subtract it; a
+negative NULL-cost movement consumes the current rounded weighted cost. A
+positive NULL-cost movement makes valuation unknown until stock later reaches
+exactly zero, which resets both quantity and valuation certainty. Reconstructed
+quantity must exactly equal the locked branch projection, may never pass below
+zero, and must have known valuation while positive. Otherwise completion returns
+`409` rather than inventing a cost.
+
+`REQUIRED` lot variants must be fully allocated; `OPTIONAL` variants use all
+eligible lot stock available and may leave the remainder unallocated; `NONE`
+variants create no lot evidence. Eligible lots are globally `ACTIVE`, branch
+`AVAILABLE`, positive, and unexpired. FEFO sorts non-null expiry dates first,
+then non-expiring lots, with inventory-lot ID as the tie-breaker. A depleted
+branch lot becomes `DEPLETED`; global lot identity/status is never changed.
+
+The deterministic Phase 12 lock family adapts the earlier writers as follows:
+sorted actor/cashier employees, branch, current assignments, sorted catalog
+reference rows (category/brand/tax/UOM), products, variants, packages and
+barcodes where needed, pricing rows, customer, POS register, till, sale, sale
+items, global lots, branch inventory, branch-lot inventory, then the ordered
+ledger history used for valuation. This preserves the Phase 11
+register-before-till-before-sale relationship and the Phase 7-9
+global-lot-before-branch-projection order. Parent sale and till locks serialize
+line mutation, completion, cancellation, till close, and duplicate requests.
+
+### Lifecycle, audits, and Phase 13 boundary
+
+Phase 12 implements only `OPEN -> COMPLETED` and `OPEN -> CANCELLED`.
+Cancellation sets the database timestamp and preserves abandoned-cart items but
+creates no inventory transaction, lot allocation, payment, or return. Completed
+and cancelled sales are immutable through these routes. `VOIDED`, reversal
+inventory transactions, tender/payment completeness, payment/refund mutation,
+sales returns, and stock reversal coordination remain Phase 13 or later work.
+
+The only Phase 12 audit vocabulary is `SALE_CREATED`, `SALE_UPDATED`,
+`SALE_ITEM_CREATED`, `SALE_ITEM_UPDATED`, `SALE_ITEM_DELETED`, `SALE_COMPLETED`,
+and `SALE_CANCELLED`. Each effective audit shares the business transaction;
+failed and no-op operations leave no audit row.
 
 ## Reference catalog behavior
 
@@ -2182,7 +2352,7 @@ Duplicate IDs are rejected. The repository locks the role, verifies every ID,
 preserves bridge rows already present, deletes removed `role_permissions`, inserts
 new ones, and audits sorted before/after permission codes in one transaction. An
 empty array intentionally removes every permission from an ordinary role. It is
-rejected for `SYSTEM_ADMIN` unless all 36 canonical permissions remain.
+rejected for `SYSTEM_ADMIN` unless all 38 canonical permissions remain.
 
 ## Global and branch-scoped user roles
 
@@ -2292,12 +2462,13 @@ inserted data is ambiguous.
 Run the complete suite against the configured local/development database:
 
 ```bash
+node --test --test-concurrency=1 test/sales.integration.test.js
 node --test --test-concurrency=1 test/pos.integration.test.js
 node --test --test-concurrency=1 test/customer.integration.test.js
 npm test
 ```
 
-The complete Phase 2-11 validation suite covers:
+The complete Phase 2-12 validation suite covers:
 
 - Phase 2 health, database health, JSON 404, and graceful SIGINT/SIGTERM;
 - Phase 3 login, JWT enforcement, password-change gating, current account state,
@@ -2361,7 +2532,13 @@ The complete Phase 2-11 validation suite covers:
   uniqueness, operational actor/cashier checks, active register/cashier guards,
   till lifecycle and cancellation safety, append-only cash movements, exact
   persisted-evidence reconciliation, eight audit actions, rollback and
-  concurrency outcomes, and zero unrelated-domain mutation; and
+  concurrency outcomes, and zero unrelated-domain mutation;
+- Phase 12's exact nine-route matrix, two isolated branch permissions, strict
+  operational actor and till-state gates, server-owned catalog and price
+  snapshots, exact decimal and tax arithmetic, cart lifecycle, atomic SALE
+  ledger posting, weighted-average cost reconstruction, REQUIRED/OPTIONAL/NONE
+  lot behavior with FEFO, seven audit actions, rollback and concurrency
+  outcomes, and zero payment or unrelated-domain mutation; and
 - exact reverse-FK cleanup of uniquely identified `TEST_*` access-control,
   organization, product-dependency, reference-catalog, pricing, bridge, and
   audit rows.
@@ -2385,11 +2562,13 @@ prerequisites, performs stock changes only through Phase 9 APIs, and verifies
 exact reverse-FK cleanup. Phase 10 creates only unmistakable `TEST_P10_*`
 access-control and customer prerequisites, uses any direct historical-sale row
 only as an isolated FK-stability fixture, and removes its exact reverse-FK
-closure. Phase 11 creates isolated `TEST_P11_*` access, organization, register,
-till, and minimum sale/payment evidence fixtures, mutates Phase 11 state only
-through its API, and removes the exact reverse-FK closure. No suite operates real
-development records or implements checkout, sale/payment mutation APIs, returns,
-loyalty points, or customer financial accounts.
+closure. Phase 11 creates isolated `TEST_P11_*` access, organization, register, till,
+and minimum sale/payment evidence fixtures, mutates Phase 11 state only through
+its API, and removes the exact reverse-FK closure. Phase 12 creates isolated
+`TEST_P12_*` access, organization, catalog, price, till, lot, and stock fixtures,
+performs sale changes only through its API, and removes their exact reverse-FK
+closure. No suite operates real development records or implements tender/payment
+mutation, refunds, returns, loyalty points, or customer financial accounts.
 
 The approved pre-edit Phase 10 baseline was the full Phase 9 regression: 114
 tests passed, 0 failed, 0 skipped, and 0 cancelled. It confirmed the active
@@ -2413,6 +2592,13 @@ cancelled in 66,189.57768 ms. Final read-only verification confirmed
 `supermarket_management` on MySQL 8.0.46 with 54 base tables, 36 canonical
 permissions, one `SYSTEM_ADMIN` role, all 36 canonical mappings, and zero
 remaining `TEST_P11_*` fixtures.
+
+The definitive focused Phase 12 run discovered 23 tests: 23 passed, 0 failed,
+0 skipped, and 0 cancelled in 3,467.509631 ms. The definitive full Phase 2-12
+regression discovered 164 tests: 164 passed, 0 failed, 0 skipped, and 0
+cancelled in 44,523.581199 ms. Final read-only verification confirmed `supermarket_management` on MySQL 8.0.46
+with 54 base tables, 38 canonical permissions, one `SYSTEM_ADMIN` role, all 38
+canonical mappings, and zero remaining `TEST_P12_*` fixtures.
 
 Quick Phase 2 smoke checks after startup:
 
@@ -2512,7 +2698,9 @@ purchase-receipt stock posting. Phase 8 stops after branch stock/lot/ledger
 reads and reorder/branch-lot-status configuration. Phase 9 stops after stock
 adjustments, physical stock counts, and inter-branch stock transfers. Phase 10
 stops after global customer master/profile and loyalty-identity administration;
-it does not invent financial customer accounts. Phase 11 stops after branch POS
-register configuration, till-session lifecycle, cash movements, and exact drawer
-reconciliation; checkout and sale/payment mutation remain Phase 12 and later
-work.
+it does not invent financial customer accounts. Phase 11 stops after branch POS register configuration, till-session
+lifecycle,
+cash movements, and exact drawer reconciliation. Phase 12 stops after OPEN-cart
+management, atomic sale completion and stock posting, or cancellation. Payments,
+tender handling, refunds, sales returns, and void/reversal workflows remain
+Phase 13 or later work.
