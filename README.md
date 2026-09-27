@@ -1,9 +1,9 @@
 # Supermarket Management System
 
 A production-oriented, multi-branch supermarket management system built in
-reviewed phases. Phase 12 adds the branch-scoped sales/checkout engine, exact
-commercial snapshots, and atomic SALE inventory posting on top of the approved
-Phase 11 till workflows and frozen 54-table database.
+reviewed phases. Phase 13 adds global payment-method configuration and
+branch-aware sale tender handling on top of the approved Phase 12 checkout
+engine and frozen 54-table database.
 
 The current API reads branch inventory and historical stock transactions,
 configures reorder settings and branch lot availability, and atomically posts
@@ -17,16 +17,18 @@ sellable/stockable variants, unit-conversion packages, case-sensitive barcodes,
 units of measure, hierarchical categories, brands, tax rates, and the existing
 organization and access records. It now also administers individual and
 business customer profiles without inventing a financial customer-account
-model. It now also configures physical branch registers, opens and controls
-cashier till sessions, records append-only drawer movements, and closes drawers
-against persisted cash evidence. It retains all Phase 2-10 behavior.
+model. It configures physical branch registers, opens and controls cashier till
+sessions, records append-only drawer movements, and closes drawers against
+persisted cash evidence. It now also records exact split tender, enforces payment
+completeness before future sale completion, and preserves payment attempt
+history. It retains all Phase 2-12 behavior.
 
-Phases 5A, 5B, 5C, 6, 7, 8, 9, 10, 11, and 12 do **not** redesign the database. The approved
+Phases 5A, 5B, 5C, 6, 7, 8, 9, 10, 11, 12, and 13 do **not** redesign the database. The approved
 [`database/schema.sql`](database/schema.sql) and detailed
 [`database/README.md`](database/README.md) remain the authority for the existing
 54 tables.
 
-## Phase 5A through Phase 12 purpose and boundaries
+## Phase 5A through Phase 13 purpose and boundaries
 
 Reference catalog records describe shared business concepts that products will
 reference later. They are organization-wide configuration, not branch stock,
@@ -118,6 +120,16 @@ concurrency-safe register/session ownership. It reads existing sales and payment
 evidence only when closing a till; it does not create or mutate a sale, payment,
 customer, inventory balance, lot balance, or inventory-ledger record.
 
+Phase 12 uses the frozen sale and stock tables for OPEN carts, immutable
+commercial snapshots, exact pricing/tax arithmetic, and atomic SALE inventory
+posting with lot allocation and reconstructed weighted cost.
+
+Phase 13 uses the frozen `payment_methods` and `sale_payments` tables. It
+configures global tender methods, records branch sale PAYMENT attempts, supports
+split tender, integrates completed funding with till reconciliation, and makes
+payment completeness an atomic precondition of future sale completion. It does
+not create REFUND rows or implement sales returns.
+
 ## Technology stack
 
 - Node.js 20+ with ES Modules
@@ -165,10 +177,11 @@ Phase 10 customer route. Phase 5C
 pricing, Phase 7 purchasing/receiving, and Phase 8/9 inventory operations use
 `requireBranchPermission(...)` with the URL branch. Phase 11 register and till
 routes use the same branch-aware permission boundary, with an additional
-transactional employee check for operational till writes. Phase 12 sales routes
-use that branch-aware boundary and require the same transactional operational
-employee check for every checkout write. A role name never bypasses
-authorization.
+transactional employee check for operational till writes. Phase 12 sales routes use that branch-aware boundary and require the same
+transactional operational employee check for every checkout write. Phase 13
+payment-method routes are global; sale-payment routes are branch-aware, and all
+sale-payment writes repeat the operational employee validation inside their
+transaction. A role name never bypasses authorization.
 
 ## Project structure
 
@@ -199,6 +212,7 @@ supermarket-management-system/
 │   │   ├── goodsReceipt.controller.js
 │   │   ├── inventory.controller.js
 │   │   ├── inventoryAdjustment.controller.js
+│   │   ├── paymentMethod.controller.js
 │   │   ├── posRegister.controller.js
 │   │   ├── product.controller.js
 │   │   ├── productBarcode.controller.js
@@ -207,6 +221,7 @@ supermarket-management-system/
 │   │   ├── purchaseOrder.controller.js
 │   │   ├── role.controller.js
 │   │   ├── sale.controller.js
+│   │   ├── salePayment.controller.js
 │   │   ├── supplier.controller.js
 │   │   ├── supplierProduct.controller.js
 │   │   ├── supplierProductPackage.controller.js
@@ -244,6 +259,7 @@ supermarket-management-system/
 │   │   ├── inventoryAdjustment.repository.js
 │   │   ├── inventoryMovement.repository.js
 │   │   ├── inventoryWrite.repository.js
+│   │   ├── paymentMethod.repository.js
 │   │   ├── posRegister.repository.js
 │   │   ├── product.repository.js
 │   │   ├── productBarcode.repository.js
@@ -256,6 +272,7 @@ supermarket-management-system/
 │   │   ├── role.repository.js
 │   │   ├── sale.repository.js
 │   │   ├── saleCompletion.repository.js
+│   │   ├── salePayment.repository.js
 │   │   ├── supplier.repository.js
 │   │   ├── supplierProduct.repository.js
 │   │   ├── supplierProductPackage.repository.js
@@ -269,6 +286,7 @@ supermarket-management-system/
 │   │   ├── admin/
 │   │   │   ├── branch.routes.js
 │   │   │   ├── customer.routes.js
+│   │   │   ├── paymentMethod.routes.js
 │   │   │   ├── catalog/
 │   │   │   │   ├── brand.routes.js
 │   │   │   │   ├── category.routes.js
@@ -289,7 +307,8 @@ supermarket-management-system/
 │   │   │   │   ├── register.routes.js
 │   │   │   │   └── till.routes.js
 │   │   │   ├── sales/
-│   │   │   │   └── index.js
+│   │   │   │   ├── index.js
+│   │   │   │   └── payment.routes.js
 │   │   │   ├── products/
 │   │   │   │   ├── index.js
 │   │   │   │   ├── product.routes.js
@@ -328,6 +347,7 @@ supermarket-management-system/
 │   │   ├── goodsReceipt.service.js
 │   │   ├── inventory.service.js
 │   │   ├── inventoryAdjustment.service.js
+│   │   ├── paymentMethod.service.js
 │   │   ├── posRegister.service.js
 │   │   ├── product.service.js
 │   │   ├── productBarcode.service.js
@@ -336,6 +356,7 @@ supermarket-management-system/
 │   │   ├── purchaseOrder.service.js
 │   │   ├── role.service.js
 │   │   ├── sale.service.js
+│   │   ├── salePayment.service.js
 │   │   ├── supplier.service.js
 │   │   ├── supplierProduct.service.js
 │   │   ├── supplierProductPackage.service.js
@@ -388,6 +409,10 @@ supermarket-management-system/
 │   │   │   ├── branchPackagePrice.validator.js
 │   │   │   ├── branchVariantPrice.validator.js
 │   │   │   └── common.validator.js
+│   │   ├── payments/
+│   │   │   ├── common.validator.js
+│   │   │   ├── paymentMethod.validator.js
+│   │   │   └── salePayment.validator.js
 │   │   ├── pos/
 │   │   │   ├── common.validator.js
 │   │   │   ├── posRegister.validator.js
@@ -419,6 +444,7 @@ supermarket-management-system/
 │   ├── pricing.integration.test.js
 │   ├── productCatalog.integration.test.js
 │   ├── purchasing.integration.test.js
+│   ├── payments.integration.test.js
 │   ├── sales.integration.test.js
 │   └── supplierCatalog.integration.test.js
 ├── .env
@@ -429,7 +455,8 @@ supermarket-management-system/
 └── README.md
 ```
 
-`sales.integration.test.js` exercises Phase 12 against MySQL,
+`payments.integration.test.js` exercises Phase 13 against MySQL,
+`sales.integration.test.js` retains Phase 12 coverage,
 `pos.integration.test.js` retains Phase 11 coverage,
 `customer.integration.test.js` retains Phase 10 coverage,
 `inventoryOperations.integration.test.js` retains Phase 9 coverage,
@@ -509,7 +536,7 @@ npm run dev
 # Start normally
 npm start
 
-# Seed/reconcile canonical Phase 4-11 access configuration
+# Seed/reconcile canonical Phase 4-13 access configuration
 npm run seed:access
 
 # Secure interactive initial-administrator bootstrap
@@ -528,7 +555,7 @@ Permissions are application-defined capabilities. A permission code is useful
 only because application routes check that exact code, so administrators cannot
 invent permission definitions through the HTTP API.
 
-The idempotent catalog contains 38 canonical Phase 4-12 permissions:
+The idempotent catalog contains 42 canonical Phase 4-13 permissions:
 
 | Permission code | Meaning |
 | --- | --- |
@@ -570,6 +597,10 @@ The idempotent catalog contains 38 canonical Phase 4-12 permissions:
 | `till_sessions.manage` | Open and operate branch till sessions and record cash movements in Phase 11 |
 | `sales.read` | View branch sales and persisted checkout details in Phase 12 |
 | `sales.manage` | Operate carts and atomically complete or cancel branch sales in Phase 12 |
+| `payment_methods.read` | View global payment-method configuration in Phase 13 |
+| `payment_methods.manage` | Create and update global payment-method configuration in Phase 13 |
+| `payments.read` | View branch sale-payment attempts and funding summaries in Phase 13 |
+| `payments.manage` | Create and transition branch sale-payment attempts in Phase 13 |
 
 The seed inserts missing canonical permissions, reconciles their human-readable
 metadata, preserves unrelated permissions and roles, ensures the
@@ -660,6 +691,17 @@ may read sales, but every sale write is operational and revalidates an active
 linked employee with a current URL-branch assignment inside the transaction.
 Neither permission implies the other or any inventory, till, or payment
 permission.
+
+Phase 13 payment-method configuration uses global `payment_methods.read` and
+`payment_methods.manage` grants; a branch-scoped grant cannot satisfy those
+routes. Sale payments use branch-aware `payments.read` and `payments.manage`.
+A global payment grant can satisfy permission scope at any branch and a branch
+grant only at its exact URL branch. The separate linked-employee assignment gate
+still applies to either qualifying grant. Authorized unlinked accounts may read
+sale payments, but every payment write additionally requires an `ACTIVE` linked
+employee with a current URL-branch assignment and rechecks that actor inside the
+transaction. Payment permissions do not imply sales permissions, and sale
+completion remains protected only by `sales.manage`.
 
 If `SYSTEM_ADMIN` already exists but is inactive, the seed deliberately leaves
 it inactive and prints a warning instead of silently reversing an emergency or
@@ -770,6 +812,8 @@ Supported filters:
 | branch variant prices | `search`, `isActive`, `effectiveStatus` |
 | branch package prices | `search`, `isActive`, `effectiveStatus` |
 | sales | `search`, `status`, `customerId`, `cashierEmployeeId`, `posRegisterId`, `tillSessionId`, `from`, `to` |
+| payment methods | `search`, `methodType`, `isActive`, `requiresReference` |
+| sale payments | `status`, `paymentMethodId`, `paymentType`, `from`, `to` |
 | customers | `search`, `customerType`, `status`, `loyaltyNumber`, `email`, `phone` |
 
 Ordering is code-controlled and includes stable ID tie-breakers. Search and
@@ -1984,9 +2028,10 @@ been started.
 
 Phase 12 uses the frozen `sales`, `sale_items`, and `sale_item_lots` tables and
 the existing branch inventory, lot projection, and append-only inventory ledger.
-It adds exactly two canonical permissions, `sales.read` and `sales.manage`, for
-a total of 38. No schema, package dependency, payment, refund, return, void,
-frontend, or Phase 13 implementation is part of this phase.
+It added exactly two canonical permissions, `sales.read` and `sales.manage`,
+for the then-current total of 38. At the Phase 12 checkpoint no schema, package
+dependency, payment, refund, return, void, frontend, or Phase 13 implementation
+was part of that phase.
 
 ### Exact routes
 
@@ -2106,19 +2151,229 @@ register-before-till-before-sale relationship and the Phase 7-9
 global-lot-before-branch-projection order. Parent sale and till locks serialize
 line mutation, completion, cancellation, till close, and duplicate requests.
 
-### Lifecycle, audits, and Phase 13 boundary
+### Lifecycle, audits, and Phase 12 boundary
 
 Phase 12 implements only `OPEN -> COMPLETED` and `OPEN -> CANCELLED`.
 Cancellation sets the database timestamp and preserves abandoned-cart items but
 creates no inventory transaction, lot allocation, payment, or return. Completed
-and cancelled sales are immutable through these routes. `VOIDED`, reversal
-inventory transactions, tender/payment completeness, payment/refund mutation,
-sales returns, and stock reversal coordination remain Phase 13 or later work.
+and cancelled sales are immutable through these routes. Phase 13 now supplies
+tender/payment completeness without changing the sale route permissions.
+`VOIDED`, reversal inventory transactions, refunds, sales returns, and stock
+reversal coordination remain later work.
 
 The only Phase 12 audit vocabulary is `SALE_CREATED`, `SALE_UPDATED`,
 `SALE_ITEM_CREATED`, `SALE_ITEM_UPDATED`, `SALE_ITEM_DELETED`, `SALE_COMPLETED`,
 and `SALE_CANCELLED`. Each effective audit shares the business transaction;
 failed and no-op operations leave no audit row.
+
+## Phase 13 payments and tender handling
+
+Phase 13 uses the approved schema without alteration. `payment_methods` is the
+global tender configuration master. `sale_payments` is immutable payment-attempt
+evidence linked to one sale, one method, and the employee that processed it. The
+frozen nullable `sales_return_id` and `REFUND` enum exist for Phase 14; every
+Phase 13 write deliberately uses `sales_return_id = NULL` and
+`payment_type = PAYMENT`.
+
+The phase adds exactly four canonical permissions, increasing both the canonical
+catalog and `SYSTEM_ADMIN` mappings from 38 to 42:
+
+- `payment_methods.read` and `payment_methods.manage` are global permissions;
+- `payments.read` and `payments.manage` are branch-aware permissions.
+
+A branch-scoped grant never satisfies the global payment-method API. For sale
+payments, a global grant satisfies permission scope at any branch and a branch
+grant only at its exact URL branch. Permission scope and operational identity
+remain separate: an employee-linked user needs a current assignment to the URL
+branch even when the permission came from a global grant. Reads may be performed
+by an authorized unlinked account; writes additionally require an active linked
+employee and current assignment, rechecked transactionally. An unlinked
+`SYSTEM_ADMIN` therefore may configure global methods and read branch payment
+history, but cannot create or transition a sale payment.
+
+### Exact routes
+
+Phase 13 adds exactly ten routes. The first four are below `/api/admin`; the last
+six are below `/api/admin/branches/:branchId`.
+
+| # | Method and path | Permission | Purpose |
+| ---: | --- | --- | --- |
+| 1 | `GET /payment-methods` | `payment_methods.read` | List global methods with stable pagination |
+| 2 | `POST /payment-methods` | `payment_methods.manage` | Create a global payment method |
+| 3 | `GET /payment-methods/:paymentMethodId` | `payment_methods.read` | Read one method |
+| 4 | `PATCH /payment-methods/:paymentMethodId` | `payment_methods.manage` | Update mutable method configuration |
+| 5 | `GET /sales/:saleId/payments` | `payments.read` | List attempts and the sale funding summary |
+| 6 | `POST /sales/:saleId/payments` | `payments.manage` | Reserve a new PENDING PAYMENT attempt |
+| 7 | `GET /sales/:saleId/payments/:salePaymentId` | `payments.read` | Read one payment attempt |
+| 8 | `POST /sales/:saleId/payments/:salePaymentId/complete` | `payments.manage` | Complete a PENDING PAYMENT |
+| 9 | `POST /sales/:saleId/payments/:salePaymentId/fail` | `payments.manage` | Mark a PENDING PAYMENT failed |
+| 10 | `POST /sales/:saleId/payments/:salePaymentId/cancel` | `payments.manage` | Cancel a PENDING PAYMENT attempt |
+
+There is no delete, edit-payment, refund, callback, capture alias, generic tender,
+or processor-specific route. Action bodies must be empty. Reads never create an
+audit or mutate payment/sale/till state.
+
+### Payment-method configuration
+
+Create accepts exactly `methodCode`, `methodName`, `methodType`,
+`requiresReference`, and optional `isActive`. The method type must be one of
+`CASH`, `CARD`, `BANK_TRANSFER`, `MOBILE_MONEY`, `VOUCHER`, or `OTHER`. PATCH
+accepts only code, name, reference requirement, and active state; method type is
+immutable. Codes are trimmed and uppercased. Code and name remain independently
+unique. A no-op PATCH returns the current row without changing `updated_at` or
+writing audit evidence. Inactive methods remain readable and historical payment
+rows retain their method reference, but an inactive method cannot start a new
+payment.
+
+The method list permits exactly `search`, `methodType`, `isActive`,
+`requiresReference`, `page`, and `limit`. Search covers code and name. Ordering
+is `method_code ASC, payment_method_id ASC`.
+
+### Payment identity, exact money, and summaries
+
+Payment creation accepts exactly:
+
+```json
+{
+  "paymentMethodId": "1",
+  "amount": "100.00",
+  "externalReference": "optional-provider-evidence",
+  "notes": "optional operator note"
+}
+```
+
+`amount` is a strictly positive DECIMAL(19,2) string. Numeric JSON, scientific
+notation, excess scale, overflow, zero, and negative values are rejected before
+SQL. IDs stay strings so the full `BIGINT UNSIGNED` domain is safe. The server
+generates a bounded-retry `PAY-` plus 32-uppercase-hex payment number, copies the
+sale currency, stores the authenticated actor employee, forces `PAYMENT` and
+`PENDING`, and leaves `paid_at` null. A method marked `requires_reference` needs
+a non-null reference. The frozen unique `(payment_method_id,
+external_reference)` rule allows the same reference under a different method but
+rejects reuse under the same method.
+
+The payment list filters `created_at` using exact `from`/`to` dates, orders by
+`created_at ASC, sale_payment_id ASC`, and returns stable pagination plus:
+
+```json
+{
+  "summary": {
+    "completedPaymentAmount": "0.00",
+    "pendingPaymentAmount": "0.00",
+    "activePaymentAmount": "0.00",
+    "outstandingAmount": "100.00",
+    "isFullyPaid": false
+  }
+}
+```
+
+Only `PAYMENT` rows contribute to this Phase 13 funding summary. Amounts are
+computed with scaled `BigInt`, never binary floating point. REFUND history may be
+listed but is never netted into checkout funding.
+
+### Lifecycle, commitment, and sale integration
+
+The only Phase 13 transitions are:
+
+```text
+PENDING -> COMPLETED
+PENDING -> FAILED
+PENDING -> CANCELLED
+```
+
+COMPLETED, FAILED, and CANCELLED rows are terminal and never deleted. Retrying
+creates a new attempt, preserving reference, employee, and audit history.
+Completion sets authoritative database UTC `paid_at`; failed/cancelled attempts
+keep it null. Method deactivation after creation does not invalidate an existing
+attempt, so a PENDING attempt may still complete, fail, or cancel.
+
+An active tender is a PAYMENT in PENDING or COMPLETED state. For an OPEN sale:
+
+```text
+activePaymentAmount    = PENDING PAYMENT + COMPLETED PAYMENT
+completedPaymentAmount = COMPLETED PAYMENT
+outstandingAmount      = sale total - completedPaymentAmount
+```
+
+Creation requires `activePaymentAmount + new amount <= sale total`. PENDING is
+a reservation, so two simultaneous requests cannot each reserve the same
+remaining balance. Split tender is allowed when the exact active total stays at
+or below the sale total. The stored CASH amount is the amount applied to the
+sale; the frozen schema has no `cash_received` or `change_due` field.
+
+Once active tender exists, Phase 12 sale header and item mutations return `409`:
+commercial totals cannot move beneath reserved or completed money. FAILED- or
+CANCELLED-only history releases that freeze. Sale cancellation similarly rejects
+PENDING or COMPLETED PAYMENT history but may proceed after only failed/cancelled
+attempts. It never auto-cancels or auto-refunds a payment.
+
+The existing `POST /sales/:saleId/complete` route remains protected only by
+`sales.manage`. Under the locked sale it locks payment rows immediately, then
+requires:
+
+- no REFUND history conflict;
+- no PENDING PAYMENT;
+- exact completed PAYMENT total equal to `sales.total_amount`.
+
+Incomplete or overpaid history rolls back before inventory or audit changes.
+A valid zero-total sale needs no fake payment. Existing Phase 12 completed sales
+are not backfilled, reopened, or rewritten; payment creation is rejected for an
+already completed sale.
+
+Creation and completion require an OPEN sale, matching branch/register/till/
+cashier identity, an active branch, currency equality across branch/till/sale,
+and an OPEN till. Cleanup transitions to FAILED or CANCELLED are deliberately
+allowed while the original till is OPEN, SUSPENDED, or CLOSED so stranded
+reservations can be released; cleanup is rejected if the till is CANCELLED.
+
+### Locking, till reconciliation, and audits
+
+Operational payment writes use this order:
+
+```text
+sorted operational employees
+-> branch
+-> current assignments
+-> POS register
+-> till session
+-> sale
+-> sale payments by ID
+-> payment method
+```
+
+This is compatible with Phase 11 till close (`register/till -> sales ->
+sale_payments -> payment_methods`) and avoids method-before-till inversion.
+Payment creation serializes with cart edits, method deactivation, competing
+reservations, sale completion, sale cancellation, and till close. Till close
+continues to count only COMPLETED CASH PAYMENT rows as cash inflow; PENDING,
+FAILED, CANCELLED, and noncash payments do not change expected cash. Phase 13
+does not alter the existing completed CASH REFUND subtraction used for historical
+or future return evidence.
+
+Exactly six new transaction-bound audit actions exist:
+
+- `PAYMENT_METHOD_CREATED`
+- `PAYMENT_METHOD_UPDATED`
+- `SALE_PAYMENT_CREATED`
+- `SALE_PAYMENT_COMPLETED`
+- `SALE_PAYMENT_FAILED`
+- `SALE_PAYMENT_CANCELLED`
+
+Method audits use entity `PAYMENT_METHOD` with no branch. Payment audits use
+entity `SALE_PAYMENT` and the sale branch. GETs, no-op method PATCHes, failed
+validation/authorization, rejected overpayment, duplicate references, invalid
+transitions, losing races, and rolled-back sale completion create no Phase 13
+audit.
+
+### Phase 14 boundary
+
+Phase 13 is persistence and workflow for incoming sale PAYMENT rows only. It
+does not contact card networks, banks, Paystack, Flutterwave, or mobile-money
+providers; an external reference is caller-supplied evidence, not a claim of
+processor integration. It adds no REFUND writer, sale return, returned item,
+restock, refund allocation, void, reversal, chargeback, store-credit, customer
+wallet, frontend, or Postman collection. Those refund/return responsibilities
+belong to Phase 14.
 
 ## Reference catalog behavior
 
@@ -2352,7 +2607,7 @@ Duplicate IDs are rejected. The repository locks the role, verifies every ID,
 preserves bridge rows already present, deletes removed `role_permissions`, inserts
 new ones, and audits sorted before/after permission codes in one transaction. An
 empty array intentionally removes every permission from an ordinary role. It is
-rejected for `SYSTEM_ADMIN` unless all 38 canonical permissions remain.
+rejected for `SYSTEM_ADMIN` unless all 42 canonical permissions remain.
 
 ## Global and branch-scoped user roles
 
@@ -2462,13 +2717,14 @@ inserted data is ambiguous.
 Run the complete suite against the configured local/development database:
 
 ```bash
+node --test --test-concurrency=1 test/payments.integration.test.js
 node --test --test-concurrency=1 test/sales.integration.test.js
 node --test --test-concurrency=1 test/pos.integration.test.js
 node --test --test-concurrency=1 test/customer.integration.test.js
 npm test
 ```
 
-The complete Phase 2-12 validation suite covers:
+The complete Phase 2-13 validation suite covers:
 
 - Phase 2 health, database health, JSON 404, and graceful SIGINT/SIGTERM;
 - Phase 3 login, JWT enforcement, password-change gating, current account state,
@@ -2538,7 +2794,12 @@ The complete Phase 2-12 validation suite covers:
   snapshots, exact decimal and tax arithmetic, cart lifecycle, atomic SALE
   ledger posting, weighted-average cost reconstruction, REQUIRED/OPTIONAL/NONE
   lot behavior with FEFO, seven audit actions, rollback and concurrency
-  outcomes, and zero payment or unrelated-domain mutation; and
+  outcomes, and zero refund/return or unrelated-domain mutation;
+- Phase 13's exact ten-route matrix, four isolated permissions, global method
+  configuration, branch-aware operational tender, exact split-payment
+  commitment, cart/cancellation freeze, sale-completion funding, till drawer
+  integration, six audit actions, terminal attempt history, and concurrency-safe
+  payment/till/sale/method races; and
 - exact reverse-FK cleanup of uniquely identified `TEST_*` access-control,
   organization, product-dependency, reference-catalog, pricing, bridge, and
   audit rows.
@@ -2566,9 +2827,13 @@ closure. Phase 11 creates isolated `TEST_P11_*` access, organization, register, 
 and minimum sale/payment evidence fixtures, mutates Phase 11 state only through
 its API, and removes the exact reverse-FK closure. Phase 12 creates isolated
 `TEST_P12_*` access, organization, catalog, price, till, lot, and stock fixtures,
-performs sale changes only through its API, and removes their exact reverse-FK
-closure. No suite operates real development records or implements tender/payment
-mutation, refunds, returns, loyalty points, or customer financial accounts.
+performs sale changes only through its API and uses isolated direct-SQL
+COMPLETED-payment prerequisites only to preserve the Phase 12 inventory test
+purpose. Phase 13 creates isolated `TEST_P13_*` access, branch, till, catalog,
+stock, method, sale, and payment fixtures, performs payment mutations through
+its API, and removes their exact reverse-FK closure. No suite operates real
+development records or implements refunds, returns, loyalty points, or customer
+financial accounts.
 
 The approved pre-edit Phase 10 baseline was the full Phase 9 regression: 114
 tests passed, 0 failed, 0 skipped, and 0 cancelled. It confirmed the active
@@ -2599,6 +2864,14 @@ regression discovered 164 tests: 164 passed, 0 failed, 0 skipped, and 0
 cancelled in 44,523.581199 ms. Final read-only verification confirmed `supermarket_management` on MySQL 8.0.46
 with 54 base tables, 38 canonical permissions, one `SYSTEM_ADMIN` role, all 38
 canonical mappings, and zero remaining `TEST_P12_*` fixtures.
+
+The definitive focused Phase 13 run discovered 20 tests: 20 passed, 0 failed,
+0 skipped, and 0 cancelled in 11,407.331158 ms. The definitive full Phase 2-13
+regression discovered 184 tests: 184 passed, 0 failed, 0 skipped, and 0
+cancelled in 132,261.279257 ms. Final read-only verification confirmed
+`supermarket_management` on MySQL 8.0.46 with 54 base tables, 42 canonical
+permissions, one `SYSTEM_ADMIN` role, all 42 canonical mappings, and zero
+remaining `TEST_P13_*` fixtures.
 
 Quick Phase 2 smoke checks after startup:
 
@@ -2698,9 +2971,9 @@ purchase-receipt stock posting. Phase 8 stops after branch stock/lot/ledger
 reads and reorder/branch-lot-status configuration. Phase 9 stops after stock
 adjustments, physical stock counts, and inter-branch stock transfers. Phase 10
 stops after global customer master/profile and loyalty-identity administration;
-it does not invent financial customer accounts. Phase 11 stops after branch POS register configuration, till-session
-lifecycle,
+it does not invent financial customer accounts. Phase 11 stops after branch POS register configuration, till-session lifecycle,
 cash movements, and exact drawer reconciliation. Phase 12 stops after OPEN-cart
-management, atomic sale completion and stock posting, or cancellation. Payments,
-tender handling, refunds, sales returns, and void/reversal workflows remain
-Phase 13 or later work.
+management, atomic sale completion and stock posting, or cancellation. Phase 13
+stops after payment-method configuration, PAYMENT tender attempts, split tender,
+payment completeness, and till reconciliation. Refunds, sales returns, and
+void/reversal workflows remain Phase 14 or later work.

@@ -6,7 +6,9 @@ import {
   calculateSaleHeader,
   calculateSaleLine,
   deriveBaseQuantity,
+  formatScaledDecimal,
   isWholeQuantity,
+  parseScaledDecimal,
   taxExclusiveUnitPrice,
 } from '../utils/salesDecimal.js';
 import { insertAuditLog } from './audit.repository.js';
@@ -166,6 +168,75 @@ async function selectSale(executor, branchId, saleId, { forUpdate = false } = {}
     [branchId, saleId],
   );
   return rows[0] ?? null;
+}
+
+async function lockSalePayments(connection, saleId) {
+  const [rows] = await connection.execute(
+    `SELECT CAST(sp.sale_payment_id AS CHAR) AS salePaymentId,
+       CAST(sp.sale_id AS CHAR) AS saleId,
+       sp.payment_number AS paymentNumber,
+       CAST(sp.payment_method_id AS CHAR) AS paymentMethodId,
+       CAST(sp.processed_by_employee_id AS CHAR) AS processedByEmployeeId,
+       sp.payment_type AS paymentType, sp.status, sp.amount,
+       sp.currency_code AS currencyCode,
+       sp.external_reference AS externalReference,
+       DATE_FORMAT(sp.paid_at, '%Y-%m-%dT%H:%i:%s.%fZ') AS paidAt,
+       sp.notes
+     FROM sale_payments sp
+     WHERE sp.sale_id = ?
+     ORDER BY sp.sale_payment_id
+     FOR UPDATE`,
+    [saleId],
+  );
+
+  return rows;
+}
+
+function analyzeSalePayments(payments, saleTotalAmount) {
+  let completed = 0n;
+  let pending = 0n;
+  let active = 0n;
+  let hasPendingPayment = false;
+  let hasCompletedPayment = false;
+  let hasRefund = false;
+
+  for (const payment of payments) {
+    if (payment.paymentType === 'REFUND') {
+      hasRefund = true;
+      continue;
+    }
+    if (payment.paymentType !== 'PAYMENT') continue;
+
+    const amount = parseScaledDecimal(payment.amount, 2);
+    if (payment.status === 'COMPLETED') {
+      completed += amount;
+      active += amount;
+      hasCompletedPayment = true;
+    } else if (payment.status === 'PENDING') {
+      pending += amount;
+      active += amount;
+      hasPendingPayment = true;
+    }
+  }
+
+  const total = parseScaledDecimal(saleTotalAmount, 2);
+  return {
+    completed,
+    pending,
+    active,
+    total,
+    hasPendingPayment,
+    hasCompletedPayment,
+    hasActiveTender: hasPendingPayment || hasCompletedPayment,
+    hasRefund,
+    summary: {
+      completedPaymentAmount: formatScaledDecimal(completed, 2),
+      pendingPaymentAmount: formatScaledDecimal(pending, 2),
+      activePaymentAmount: formatScaledDecimal(active, 2),
+      outstandingAmount: formatScaledDecimal(total - completed, 2),
+      isFullyPaid: completed === total && !hasPendingPayment,
+    },
+  };
 }
 
 async function selectSaleItems(executor, saleId, { forUpdate = false } = {}) {
@@ -505,6 +576,11 @@ async function updateSale(branchId, saleId, changes, auditContext) {
       return { outcome: 'concurrent_change' };
     }
     if (current.status !== 'OPEN') return { outcome: 'sale_not_open' };
+    const paymentState = analyzeSalePayments(
+      await lockSalePayments(connection, saleId),
+      current.totalAmount,
+    );
+    if (paymentState.hasActiveTender) return { outcome: 'active_tender' };
     if (
       current.currencyCode !== till.till.currencyCode ||
       current.currencyCode !== context.branch.currencyCode
@@ -824,6 +900,11 @@ async function addSaleItem(branchId, saleId, values, auditContext) {
       sale.cashierEmployeeId !== preRead.cashierEmployeeId
     ) return { outcome: 'concurrent_change' };
     if (sale.status !== 'OPEN') return { outcome: 'sale_not_open' };
+    const paymentState = analyzeSalePayments(
+      await lockSalePayments(connection, saleId),
+      sale.totalAmount,
+    );
+    if (paymentState.hasActiveTender) return { outcome: 'active_tender' };
     if (
       sale.currencyCode !== till.till.currencyCode ||
       sale.currencyCode !== context.branch.currencyCode
@@ -936,6 +1017,11 @@ async function updateSaleItem(branchId, saleId, saleItemId, changes, auditContex
     const sale = await selectSale(connection, branchId, saleId, { forUpdate: true });
     if (!sale) return { outcome: 'sale_not_found' };
     if (sale.status !== 'OPEN') return { outcome: 'sale_not_open' };
+    const paymentState = analyzeSalePayments(
+      await lockSalePayments(connection, saleId),
+      sale.totalAmount,
+    );
+    if (paymentState.hasActiveTender) return { outcome: 'active_tender' };
     if (
       sale.currencyCode !== till.till.currencyCode ||
       sale.currencyCode !== context.branch.currencyCode
@@ -1008,6 +1094,11 @@ async function deleteSaleItem(branchId, saleId, saleItemId, auditContext) {
     const sale = await selectSale(connection, branchId, saleId, { forUpdate: true });
     if (!sale) return { outcome: 'sale_not_found' };
     if (sale.status !== 'OPEN') return { outcome: 'sale_not_open' };
+    const paymentState = analyzeSalePayments(
+      await lockSalePayments(connection, saleId),
+      sale.totalAmount,
+    );
+    if (paymentState.hasActiveTender) return { outcome: 'active_tender' };
     const item = await selectSaleItem(connection, saleId, saleItemId, {
       forUpdate: true,
     });
@@ -1045,6 +1136,16 @@ async function cancelSale(branchId, saleId, auditContext) {
     });
     if (!current) return { outcome: 'sale_not_found' };
     if (current.status !== 'OPEN') return { outcome: 'sale_not_open' };
+    const paymentState = analyzeSalePayments(
+      await lockSalePayments(connection, saleId),
+      current.totalAmount,
+    );
+    if (paymentState.hasPendingPayment) {
+      return { outcome: 'sale_payment_pending' };
+    }
+    if (paymentState.hasCompletedPayment) {
+      return { outcome: 'sale_payment_completed' };
+    }
     await connection.execute(
       `UPDATE sales SET status = 'CANCELLED', cancelled_at = UTC_TIMESTAMP(6)
        WHERE sale_id = ?`,
@@ -1071,7 +1172,9 @@ export {
   createSale,
   deleteSaleItem,
   findSale,
+  analyzeSalePayments,
   listSales,
+  lockSalePayments,
   lockCatalogForItem,
   lockCustomer,
   lockRegisterAndTill,

@@ -144,10 +144,10 @@ async function createFixture(fixture) {
         secondSeed.permissionCount,
         secondSeed.assignedPermissionCount,
       ],
-      [38, 38, 38, 38],
+      [42, 42, 42, 42],
     );
-    assert.equal(ACCESS_CONTROL_PERMISSIONS.length, 38);
-    assert.equal(new Set(ACCESS_CONTROL_PERMISSIONS.map(({ code }) => code)).size, 38);
+    assert.equal(ACCESS_CONTROL_PERMISSIONS.length, 42);
+    assert.equal(new Set(ACCESS_CONTROL_PERMISSIONS.map(({ code }) => code)).size, 42);
 
     const permissionCodes = ACCESS_CONTROL_PERMISSIONS.map(({ code }) => code);
     const [permissionRows] = await connection.execute(

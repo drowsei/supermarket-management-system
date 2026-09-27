@@ -197,6 +197,26 @@ const ACCESS_CONTROL_PERMISSIONS = Object.freeze(
       name: 'Manage Sales',
       description: 'Create, edit, complete, and cancel branch checkout sales.',
     },
+    {
+      code: 'payment_methods.read',
+      name: 'Read Payment Methods',
+      description: 'View organization-wide payment-method configuration.',
+    },
+    {
+      code: 'payment_methods.manage',
+      name: 'Manage Payment Methods',
+      description: 'Create and update organization-wide payment methods.',
+    },
+    {
+      code: 'payments.read',
+      name: 'Read Sale Payments',
+      description: 'View branch sale-payment attempts and funding summaries.',
+    },
+    {
+      code: 'payments.manage',
+      name: 'Manage Sale Payments',
+      description: 'Create and transition branch sale-payment attempts.',
+    },
   ].map((permission) => Object.freeze(permission)),
 );
 

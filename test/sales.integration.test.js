@@ -175,10 +175,10 @@ async function createFixture(fixture) {
     assert.deepEqual(
       [first.permissionCount, first.assignedPermissionCount,
         second.permissionCount, second.assignedPermissionCount],
-      [38, 38, 38, 38],
+      [42, 42, 42, 42],
     );
-    assert.equal(ACCESS_CONTROL_PERMISSIONS.length, 38);
-    assert.equal(new Set(ACCESS_CONTROL_PERMISSIONS.map(({ code }) => code)).size, 38);
+    assert.equal(ACCESS_CONTROL_PERMISSIONS.length, 42);
+    assert.equal(new Set(ACCESS_CONTROL_PERMISSIONS.map(({ code }) => code)).size, 42);
 
     fixture.branchIds = [];
     for (const suffix of ['A', 'B']) {
@@ -298,6 +298,14 @@ async function createFixture(fixture) {
         fixture.employeeByName.cashier, fixture.employeeByName.actor, fixture.prefix],
     );
     fixture.tillId = await lastId(connection);
+
+    await connection.execute(
+      `INSERT INTO payment_methods (
+         method_code, method_name, method_type, requires_reference, is_active
+       ) VALUES (?, ?, 'CARD', 0, 1)`,
+      [`P12PAY_${fixture.token}`, `${fixture.prefix} Payment`],
+    );
+    fixture.paymentMethodId = await lastId(connection);
 
     fixture.customerIds = [];
     for (const [name, state] of [['Active', 'ACTIVE'], ['Blocked', 'BLOCKED'], ['Inactive', 'INACTIVE']]) {
@@ -551,6 +559,11 @@ async function cleanupFixture(fixture) {
       [...branchIds, ...fixture.userIds],
     );
     await connection.execute(
+      `DELETE sp FROM sale_payments sp INNER JOIN sales s ON s.sale_id = sp.sale_id
+       WHERE s.branch_id IN (${placeholders(branchIds)})`,
+      branchIds,
+    );
+    await connection.execute(
       `DELETE sil FROM sale_item_lots sil
        INNER JOIN sale_items si ON si.sale_item_id = sil.sale_item_id
        INNER JOIN sales s ON s.sale_id = si.sale_id
@@ -565,6 +578,10 @@ async function cleanupFixture(fixture) {
     await connection.execute(
       `DELETE FROM sales WHERE branch_id IN (${placeholders(branchIds)})`,
       branchIds,
+    );
+    await connection.execute(
+      'DELETE FROM payment_methods WHERE payment_method_id = ?',
+      [fixture.paymentMethodId],
     );
     await connection.execute(
       `DELETE itla FROM inventory_transaction_lot_allocations itla
@@ -717,7 +734,50 @@ async function addItem(fixture, baseUrl, saleId, body, options = {}) {
   );
 }
 
+async function ensureCompletedPayment(fixture, saleId) {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [sales] = await connection.execute(
+      `SELECT status, total_amount AS totalAmount FROM sales
+       WHERE sale_id = ? LIMIT 1 FOR UPDATE`,
+      [saleId],
+    );
+    const sale = sales[0];
+    if (!sale || sale.status !== 'OPEN' || sale.totalAmount === '0.00') {
+      await connection.commit();
+      return;
+    }
+    const [payments] = await connection.execute(
+      `SELECT COUNT(*) AS count FROM sale_payments
+       WHERE sale_id = ? AND payment_type = 'PAYMENT'
+         AND status = 'COMPLETED'`,
+      [saleId],
+    );
+    if (payments[0].count === '0') {
+      await connection.execute(
+        `INSERT INTO sale_payments (
+           payment_number, sale_id, payment_method_id,
+           processed_by_employee_id, payment_type, status, amount,
+           currency_code, paid_at, notes
+         ) VALUES (?, ?, ?, ?, 'PAYMENT', 'COMPLETED', ?,
+                   'NGN', UTC_TIMESTAMP(6), ?)`,
+        [`TEST_P12_PAY_${fixture.token}_${saleId}`, saleId,
+          fixture.paymentMethodId, fixture.employeeByName.actor,
+          sale.totalAmount, 'Phase 12 isolated completion prerequisite'],
+      );
+    }
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
 async function complete(fixture, baseUrl, saleId, options = {}) {
+  await ensureCompletedPayment(fixture, saleId);
   return send(
     fixture, baseUrl, `${branchRoot(fixture, options.branchId)}/sales/${saleId}/complete`,
     { method: 'POST', token: options.token ?? fixture.tokens.actor,
@@ -1100,7 +1160,7 @@ test(
         assert.equal(added.json.data.item.lineTotal, '100.00');
       });
 
-      await t.test('completes atomically with WAC, negative SALE ledger, and no payment', async () => {
+      await t.test('completes atomically with WAC, negative SALE ledger, and an isolated payment prerequisite', async () => {
         const completed = await complete(
           fixture, baseUrl, fixture.cartonSaleId, { label: 'CARTON_COMPLETE' },
         );
@@ -1134,7 +1194,7 @@ test(
           'SELECT COUNT(*) AS count FROM sale_payments WHERE sale_id = ?',
           [fixture.cartonSaleId],
         );
-        assert.equal(payments[0].count, '0');
+        assert.equal(payments[0].count, '1');
         status(await complete(fixture, baseUrl, fixture.cartonSaleId), 409);
         status(await send(
           fixture, baseUrl, `${root}/sales/${fixture.cartonSaleId}`,
@@ -1867,6 +1927,11 @@ test(
           [fixture.tillId],
         );
         if (state[0].status === 'OPEN') {
+          await pool.execute(
+            `DELETE FROM sale_payments WHERE sale_id = ?
+             AND payment_number LIKE 'TEST_P12_PAY_%'`,
+            [saleId],
+          );
           status(await send(fixture, baseUrl, `${root}/sales/${saleId}/cancel`, {
             method: 'POST', label: 'CLOSE_RACE_CLEANUP', body: {},
           }), 200);
@@ -1987,7 +2052,7 @@ test(
         ), 200);
       });
 
-      await t.test('writes only the seven Phase 12 audit actions and no adjacent-domain data', async () => {
+      await t.test('writes only the seven Phase 12 audit actions and no adjacent-domain mutation', async () => {
         const [actions] = await pool.execute(
           `SELECT DISTINCT action_type AS actionType FROM audit_logs
            WHERE branch_id = ? AND request_id LIKE ?
@@ -2006,7 +2071,7 @@ test(
           `SELECT
              (SELECT COUNT(*) FROM sale_payments sp
               INNER JOIN sales s ON s.sale_id = sp.sale_id
-              WHERE s.branch_id = ?) +
+              WHERE s.branch_id = ? AND sp.payment_type = 'REFUND') +
              (SELECT COUNT(*) FROM sales_returns WHERE branch_id = ?) +
              (SELECT COUNT(*) FROM inventory_transactions
               WHERE branch_id = ? AND transaction_type = 'SALE_VOID') AS count`,

@@ -21,8 +21,10 @@ import {
 import { generateDocumentNumber, selectUtcNow } from './purchasing.repository.js';
 import {
   abortSale,
+  analyzeSalePayments,
   lockCustomer,
   lockRegisterAndTill,
+  lockSalePayments,
   lockSalesOperationalContext,
   preReadSale,
   saleSnapshot,
@@ -362,6 +364,19 @@ async function completeSale(branchId, saleId, auditContext) {
       sale.currencyCode !== till.till.currencyCode ||
       sale.currencyCode !== context.branch.currencyCode
     ) return { outcome: 'currency_mismatch' };
+
+    const paymentState = analyzeSalePayments(
+      await lockSalePayments(connection, saleId),
+      sale.totalAmount,
+    );
+    if (paymentState.hasRefund) return { outcome: 'payment_history_conflict' };
+    if (paymentState.hasPendingPayment) return { outcome: 'payment_pending' };
+    if (paymentState.completed < paymentState.total) {
+      return { outcome: 'payment_incomplete' };
+    }
+    if (paymentState.completed > paymentState.total) {
+      return { outcome: 'payment_overpaid' };
+    }
 
     const items = await selectSaleItems(connection, saleId, { forUpdate: true });
     if (items.length === 0) return { outcome: 'empty_sale' };

@@ -35,6 +35,9 @@ const OUTCOME_ERRORS = Object.freeze({
   package_not_active: [409, 'The product package must be active for checkout'],
   package_not_sellable: [409, 'The product package is not sellable'],
   sale_not_open: [409, 'Only an OPEN sale may perform this operation'],
+  active_tender: [409, 'Sale totals cannot change after active tender has started'],
+  sale_payment_pending: [409, 'Pending payment must be resolved before cancelling the sale'],
+  sale_payment_completed: [409, 'A sale with completed payment cannot be cancelled'],
   currency_mismatch: [409, 'Sale, till, and branch currencies are inconsistent'],
   concurrent_change: [409, 'Sale or related data changed concurrently; retry'],
   catalog_changed: [409, 'Sale catalog identity changed or is no longer available'],
@@ -55,6 +58,10 @@ const OUTCOME_ERRORS = Object.freeze({
   valuation_history_conflict: [409, 'Inventory valuation history is inconsistent'],
   valuation_projection_conflict: [409, 'Inventory ledger and branch stock projection are inconsistent'],
   header_totals_conflict: [409, 'Sale header totals are inconsistent with persisted items'],
+  payment_history_conflict: [409, 'The sale has refund history that conflicts with completion'],
+  payment_pending: [409, 'All pending payments must be resolved before completing the sale'],
+  payment_incomplete: [409, 'Completed payments do not fully cover the sale total'],
+  payment_overpaid: [409, 'Completed payments exceed the sale total'],
 });
 
 function expect(result, accepted) {
