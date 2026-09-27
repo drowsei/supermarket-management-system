@@ -175,10 +175,10 @@ async function createFixture(fixture) {
     assert.deepEqual(
       [first.permissionCount, first.assignedPermissionCount,
         second.permissionCount, second.assignedPermissionCount],
-      [42, 42, 42, 42],
+      [44, 44, 44, 44],
     );
-    assert.equal(ACCESS_CONTROL_PERMISSIONS.length, 42);
-    assert.equal(new Set(ACCESS_CONTROL_PERMISSIONS.map(({ code }) => code)).size, 42);
+    assert.equal(ACCESS_CONTROL_PERMISSIONS.length, 44);
+    assert.equal(new Set(ACCESS_CONTROL_PERMISSIONS.map(({ code }) => code)).size, 44);
 
     fixture.branchIds = [];
     for (const suffix of ['A', 'B']) {

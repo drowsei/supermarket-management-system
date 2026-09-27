@@ -300,15 +300,16 @@ async function createLedger(connection, {
     [branchId, generateDocumentNumber('IT'), transactionType, actorEmployeeId, notes],
   );
   const inventoryTransactionId = await getLastInsertId(connection);
-  let lineNumber = 0;
+  let generatedLineNumber = 0;
   for (const movement of movements) {
-    lineNumber += 1;
+    generatedLineNumber += 1;
     await connection.execute(
       `INSERT INTO inventory_transaction_items (
          inventory_transaction_id, line_number, product_variant_id,
          quantity_change, unit_cost
        ) VALUES (?, ?, ?, ?, ?)`,
-      [inventoryTransactionId, lineNumber, movement.productVariantId,
+      [inventoryTransactionId, movement.lineNumber ?? generatedLineNumber,
+        movement.productVariantId,
         movement.quantityChange, movement.unitCost ?? null],
     );
     const inventoryTransactionItemId = await getLastInsertId(connection);

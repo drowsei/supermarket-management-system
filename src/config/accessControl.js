@@ -217,6 +217,16 @@ const ACCESS_CONTROL_PERMISSIONS = Object.freeze(
       name: 'Manage Sale Payments',
       description: 'Create and transition branch sale-payment attempts.',
     },
+    {
+      code: 'returns.read',
+      name: 'Read Sales Returns',
+      description: 'View branch sales returns, returned items, and refund evidence.',
+    },
+    {
+      code: 'returns.manage',
+      name: 'Manage Sales Returns',
+      description: 'Create, approve, post, cancel, and refund branch sales returns.',
+    },
   ].map((permission) => Object.freeze(permission)),
 );
 

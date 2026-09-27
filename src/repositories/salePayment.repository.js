@@ -19,6 +19,7 @@ const PAYMENT_COLUMNS = `
   CAST(sp.sale_payment_id AS CHAR) AS salePaymentId,
   sp.payment_number AS paymentNumber,
   CAST(sp.sale_id AS CHAR) AS saleId,
+  CAST(sp.sales_return_id AS CHAR) AS salesReturnId,
   CAST(sp.payment_method_id AS CHAR) AS paymentMethodId,
   CAST(sp.processed_by_employee_id AS CHAR) AS processedByEmployeeId,
   sp.payment_type AS paymentType,

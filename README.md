@@ -1,9 +1,9 @@
 # Supermarket Management System
 
 A production-oriented, multi-branch supermarket management system built in
-reviewed phases. Phase 13 adds global payment-method configuration and
-branch-aware sale tender handling on top of the approved Phase 12 checkout
-engine and frozen 54-table database.
+reviewed phases. Phase 14 adds branch-aware sales returns, auditable stock
+restoration, and return-linked refund settlement on top of the approved Phase 13
+tender engine and frozen 54-table database.
 
 The current API reads branch inventory and historical stock transactions,
 configures reorder settings and branch lot availability, and atomically posts
@@ -19,16 +19,18 @@ organization and access records. It now also administers individual and
 business customer profiles without inventing a financial customer-account
 model. It configures physical branch registers, opens and controls cashier till
 sessions, records append-only drawer movements, and closes drawers against
-persisted cash evidence. It now also records exact split tender, enforces payment
-completeness before future sale completion, and preserves payment attempt
-history. It retains all Phase 2-12 behavior.
+persisted cash evidence. It records exact split tender, enforces payment completeness before sale
+completion, and preserves payment attempt history. It now also records returned
+merchandise separately from the original sale, posts restockable returns through
+the inventory ledger, and settles exact return-linked refunds. It retains all
+Phase 2-13 behavior.
 
-Phases 5A, 5B, 5C, 6, 7, 8, 9, 10, 11, 12, and 13 do **not** redesign the database. The approved
+Phases 5A, 5B, 5C, 6, 7, 8, 9, 10, 11, 12, 13, and 14 do **not** redesign the database. The approved
 [`database/schema.sql`](database/schema.sql) and detailed
 [`database/README.md`](database/README.md) remain the authority for the existing
 54 tables.
 
-## Phase 5A through Phase 13 purpose and boundaries
+## Phase 5A through Phase 14 purpose and boundaries
 
 Reference catalog records describe shared business concepts that products will
 reference later. They are organization-wide configuration, not branch stock,
@@ -130,6 +132,11 @@ split tender, integrates completed funding with till reconciliation, and makes
 payment completeness an atomic precondition of future sale completion. It does
 not create REFUND rows or implement sales returns.
 
+Phase 14 uses the frozen return, payment, inventory, lot, branch, employee, and
+till relationships for dedicated return documents, original-provenance stock
+restoration, and return-linked REFUND attempts. It does not change the database
+schema or rewrite original sale history.
+
 ## Technology stack
 
 - Node.js 20+ with ES Modules
@@ -181,7 +188,8 @@ transactional employee check for operational till writes. Phase 12 sales routes 
 transactional operational employee check for every checkout write. Phase 13
 payment-method routes are global; sale-payment routes are branch-aware, and all
 sale-payment writes repeat the operational employee validation inside their
-transaction. A role name never bypasses authorization.
+transaction. Phase 14 return and refund routes are branch-aware and repeat the
+same operational actor validation for every mutation. A role name never bypasses authorization.
 
 ## Project structure
 
@@ -222,6 +230,7 @@ supermarket-management-system/
 │   │   ├── role.controller.js
 │   │   ├── sale.controller.js
 │   │   ├── salePayment.controller.js
+│   │   ├── salesReturn.controller.js
 │   │   ├── supplier.controller.js
 │   │   ├── supplierProduct.controller.js
 │   │   ├── supplierProductPackage.controller.js
@@ -273,6 +282,8 @@ supermarket-management-system/
 │   │   ├── sale.repository.js
 │   │   ├── saleCompletion.repository.js
 │   │   ├── salePayment.repository.js
+│   │   ├── saleRefund.repository.js
+│   │   ├── salesReturn.repository.js
 │   │   ├── supplier.repository.js
 │   │   ├── supplierProduct.repository.js
 │   │   ├── supplierProductPackage.repository.js
@@ -308,7 +319,8 @@ supermarket-management-system/
 │   │   │   │   └── till.routes.js
 │   │   │   ├── sales/
 │   │   │   │   ├── index.js
-│   │   │   │   └── payment.routes.js
+│   │   │   │   ├── payment.routes.js
+│   │   │   └── return.routes.js
 │   │   │   ├── products/
 │   │   │   │   ├── index.js
 │   │   │   │   ├── product.routes.js
@@ -357,6 +369,8 @@ supermarket-management-system/
 │   │   ├── role.service.js
 │   │   ├── sale.service.js
 │   │   ├── salePayment.service.js
+│   │   ├── saleRefund.service.js
+│   │   ├── salesReturn.service.js
 │   │   ├── supplier.service.js
 │   │   ├── supplierProduct.service.js
 │   │   ├── supplierProductPackage.service.js
@@ -425,6 +439,10 @@ supermarket-management-system/
 │   │   │   ├── common.validator.js
 │   │   │   ├── sale.validator.js
 │   │   │   └── saleItem.validator.js
+│   │   ├── returns/
+│   │   │   ├── common.validator.js
+│   │   │   ├── refund.validator.js
+│   │   │   └── salesReturn.validator.js
 │   │   ├── suppliers/
 │   │   │   ├── common.validator.js
 │   │   │   ├── supplier.validator.js
@@ -445,6 +463,7 @@ supermarket-management-system/
 │   ├── productCatalog.integration.test.js
 │   ├── purchasing.integration.test.js
 │   ├── payments.integration.test.js
+│   ├── returns.integration.test.js
 │   ├── sales.integration.test.js
 │   └── supplierCatalog.integration.test.js
 ├── .env
@@ -455,7 +474,8 @@ supermarket-management-system/
 └── README.md
 ```
 
-`payments.integration.test.js` exercises Phase 13 against MySQL,
+`returns.integration.test.js` exercises Phase 14 against MySQL,
+`payments.integration.test.js` retains Phase 13 coverage,
 `sales.integration.test.js` retains Phase 12 coverage,
 `pos.integration.test.js` retains Phase 11 coverage,
 `customer.integration.test.js` retains Phase 10 coverage,
@@ -536,7 +556,7 @@ npm run dev
 # Start normally
 npm start
 
-# Seed/reconcile canonical Phase 4-13 access configuration
+# Seed/reconcile canonical Phase 4-14 access configuration
 npm run seed:access
 
 # Secure interactive initial-administrator bootstrap
@@ -555,7 +575,7 @@ Permissions are application-defined capabilities. A permission code is useful
 only because application routes check that exact code, so administrators cannot
 invent permission definitions through the HTTP API.
 
-The idempotent catalog contains 42 canonical Phase 4-13 permissions:
+The idempotent catalog contains 44 canonical Phase 4-14 permissions:
 
 | Permission code | Meaning |
 | --- | --- |
@@ -601,6 +621,8 @@ The idempotent catalog contains 42 canonical Phase 4-13 permissions:
 | `payment_methods.manage` | Create and update global payment-method configuration in Phase 13 |
 | `payments.read` | View branch sale-payment attempts and funding summaries in Phase 13 |
 | `payments.manage` | Create and transition branch sale-payment attempts in Phase 13 |
+| `returns.read` | View branch sales returns, returned items, inventory linkage, and refunds in Phase 14 |
+| `returns.manage` | Create, approve, post, cancel, and settle branch sales returns in Phase 14 |
 
 The seed inserts missing canonical permissions, reconciles their human-readable
 metadata, preserves unrelated permissions and roles, ensures the
@@ -2375,6 +2397,182 @@ restock, refund allocation, void, reversal, chargeback, store-credit, customer
 wallet, frontend, or Postman collection. Those refund/return responsibilities
 belong to Phase 14.
 
+`Phase 14` is now implemented as documented below; the Phase 13 section remains
+the incoming-PAYMENT contract.
+
+## Phase 14 sales returns and refunds
+
+Phase 14 uses the frozen schema without alteration. `sales_returns` is the
+header for a return against one original sale at that sale's branch. It records
+the original customer reference, processing/approval/cancellation employees,
+lifecycle timestamps, exact refundable total, and optional inventory transaction.
+`sales_return_items` links each line to its original `sale_items` row and
+preserves variant/package/description/SKU snapshots, exact quantity and package
+conversion, condition, restockability, reason, and refundable amount.
+
+There is no dedicated return-item-lot table. For restockable stock with known
+original lot provenance, the `CUSTOMER_RETURN` inventory transaction item uses
+the same server-owned line number as its return item, and
+`inventory_transaction_lot_allocations` records each restored lot. The nullable
+`sales_return_items.inventory_lot_id` is populated only when the entire returned
+base quantity maps to one original lot; multi-lot and aggregate restorations
+leave it null. `branch_inventory` remains the aggregate projection and
+`branch_lot_inventory` the lot projection.
+
+The exact return lifecycle is:
+
+```text
+DRAFT (no approval required) -> COMPLETED
+DRAFT (approval required) -> PENDING_APPROVAL -> APPROVED -> COMPLETED
+DRAFT / PENDING_APPROVAL / APPROVED -> CANCELLED
+```
+
+Items are editable only in `DRAFT`. The employee who processed the return cannot
+approve it. Completion and cancellation are explicit actions and terminal
+states are immutable. A completed return containing no restockable item has a
+null `inventory_transaction_id`; restockable completion posts its stock,
+lifecycle change, linkage, and audit atomically. The original sale stays
+`COMPLETED`, and its item, lot, inventory-transaction, and PAYMENT evidence is
+never rewritten.
+
+Phase 14 adds exactly two canonical permissions, increasing the catalog and
+`SYSTEM_ADMIN` mappings from 42 to 44:
+
+- `returns.read` reads branch returns, items, inventory linkage, and refunds;
+- `returns.manage` creates, edits, submits, approves, completes, cancels, and
+  settles branch returns.
+
+A global grant can satisfy permission scope at any branch; a branch grant only
+at its exact URL branch. The separate employee-assignment gate still applies to
+every employee-linked user regardless of grant scope. Authorized unlinked users
+may read, but every mutation rechecks an `ACTIVE` linked employee with a current
+assignment inside the transaction.
+
+### Exact Phase 14 routes
+
+All routes are below `/api/admin/branches/:branchId/sales/:saleId`:
+
+| # | Method and suffix | Permission | Purpose |
+| ---: | --- | --- | --- |
+| 1 | `GET /returns` | `returns.read` | List returns with status/date filters and pagination |
+| 2 | `POST /returns` | `returns.manage` | Create a DRAFT return for a completed sale |
+| 3 | `GET /returns/:salesReturnId` | `returns.read` | Read header, ordered items, inventory link, refunds, and summary |
+| 4 | `POST /returns/:salesReturnId/items` | `returns.manage` | Add an original sale item and returned quantity |
+| 5 | `PATCH /returns/:salesReturnId/items/:salesReturnItemId` | `returns.manage` | Edit allowed DRAFT fields |
+| 6 | `DELETE /returns/:salesReturnId/items/:salesReturnItemId` | `returns.manage` | Remove a DRAFT item |
+| 7 | `POST /returns/:salesReturnId/submit` | `returns.manage` | Submit an approval-required return |
+| 8 | `POST /returns/:salesReturnId/approve` | `returns.manage` | Approve with a different employee |
+| 9 | `POST /returns/:salesReturnId/complete` | `returns.manage` | Finalize evidence and restore eligible stock |
+| 10 | `POST /returns/:salesReturnId/cancel` | `returns.manage` | Cancel an unposted return without active refunds |
+| 11 | `GET /returns/:salesReturnId/refunds` | `returns.read` | List linked refunds and exact summary |
+| 12 | `POST /returns/:salesReturnId/refunds` | `returns.manage` | Create a PENDING REFUND |
+| 13 | `POST /returns/:salesReturnId/refunds/:salePaymentId/complete` | `returns.manage` | Complete a pending refund |
+| 14 | `POST /returns/:salesReturnId/refunds/:salePaymentId/fail` | `returns.manage` | Fail a pending refund |
+| 15 | `POST /returns/:salesReturnId/refunds/:salePaymentId/cancel` | `returns.manage` | Cancel a pending refund |
+
+The submit and approve routes are required by the frozen five-state enum. There
+is no generic refund PATCH/DELETE, refund-all, exchange, store-credit,
+chargeback, sale-void, gateway callback, report, or analytics route.
+
+### Quantity, historical value, and inventory cost
+
+Only a `COMPLETED` sale is eligible. A client identifies the original sale item
+and supplies exact DECIMAL(15,3) quantity, reason, condition, restockability,
+and optional note. Product/package identity, historical descriptions, money,
+cost, branch/sale linkage, document/line numbers, status, and timestamps are
+server-owned. Whole-only variants require whole returned base quantities.
+
+The original sale and all sale items are locked before existing return headers
+and items. Every non-cancelled return reserves quantity, so concurrent documents
+cannot cumulatively exceed what was sold. Money comes only from immutable
+`sale_items.line_total`; current prices, discounts, and tax configuration are
+never queried. Allocation uses scaled `BigInt` and deterministic HALF_UP against
+cumulative returned quantity. The final remaining quantity consumes the exact
+residual so repeated partial returns finish at the original line total. The
+frozen return-item schema has no separate return discount/tax fields, so their
+historical effects remain represented within `refund_amount` rather than
+invented columns.
+
+Restockable posting requires the original non-null `sale_items.unit_cost` and
+copies that DECIMAL(19,4) cost to positive ledger and lot-allocation rows. It
+never substitutes current weighted average and never writes an average-cost
+column. A zero-value item can return to inventory, but `sale_payments.amount`
+remains strictly positive so no fake zero refund row is created.
+
+### Original-provenance stock restoration
+
+Restockable quantities post positive `CUSTOMER_RETURN` movements through the
+shared inventory engine. Non-restockable items preserve commercial return
+evidence without increasing stock. Projection/version changes, ledger rows,
+return linkage/state, and audit commit or roll back together.
+
+`sale_item_lots` is authoritative. Original allocations are consumed in
+deterministic `sale_item_lot_id` order after subtracting prior completed return
+allocations derived through return header -> transaction -> matching return line
+-> lot allocation. No lot can receive more than the original sale consumed.
+`REQUIRED` variants need full original provenance. `OPTIONAL` variants restore
+the attributable portion to original lots and an originally unallocated portion
+only to aggregate stock. `NONE` variants restore aggregate stock without a fake
+lot. Existing lot-state policy prevents an expired, recalled, closed,
+quarantined, or blocked lot from becoming sellable merely because quantity is
+returned.
+
+### Refund settlement and frozen cash-till limitation
+
+Refunds reuse `sale_payments` with `payment_type = REFUND`, the original
+`sale_id`, and the composite-FK-compatible `sales_return_id`. New attempts are
+`PENDING`; only `PENDING -> COMPLETED`, `PENDING -> FAILED`, and
+`PENDING -> CANCELLED` are valid. The server generates the existing `PAY-` plus
+32-uppercase-hex number, copies sale currency, records the current employee, and
+sets database UTC `paid_at` only on completion. New attempts need an active
+payment method and any required external reference; an already-pending attempt
+may be resolved after method deactivation.
+
+PENDING plus COMPLETED refunds reserve return entitlement. Across the sale they
+cannot exceed either all completed return entitlement or the original COMPLETED
+PAYMENT money collected. FAILED and CANCELLED attempts release commitment.
+Partial/split refunds are supported, while sale/return/payment locks serialize
+overcommit and duplicate completion. The Phase 13 funding summary still counts
+PAYMENT only. Return reads expose separate `returnTotal`, completed, pending,
+active, outstanding, and `isFullyRefunded` values.
+
+The frozen schema has no refund `till_session_id`. Phase 11 can find a refund
+only via `sale_payments.sale_id -> sales.till_session_id`, so it cannot attribute
+a later cash refund to a different drawer. CASH refund creation/completion is
+therefore allowed only while the original sale till remains `OPEN`. Completion
+locks register -> till -> sale before payment rows: either it commits first and
+till close subtracts it exactly once, or close commits first and refund returns
+`409`. Noncash refunds do not affect drawer cash and may settle after the till
+closes. A future approved schema change is required for later cash refunds at a
+new till; Phase 14 does not fake this association.
+
+### Lock order and audits
+
+Return posting uses:
+
+```text
+operational employees -> branch -> current assignment
+-> catalog roots/packages -> original sale -> sale items -> sale-item lots
+-> return headers/items -> prior return ledger evidence -> global lots
+-> branch inventory -> branch-lot inventory -> new ledger/audit
+```
+
+Refund writes use operational context, register/till when cash, sale, return
+family, ordered payment rows, and payment method. This preserves the established
+parent-before-method and global-lot-before-projection order across till close,
+receiving, adjustments, counts, transfers, and sales.
+
+Effective writes use `SALES_RETURN_CREATED`,
+`SALES_RETURN_ITEM_CREATED/UPDATED/DELETED`, `SALES_RETURN_SUBMITTED`,
+`SALES_RETURN_APPROVED`, `SALES_RETURN_COMPLETED`,
+`SALES_RETURN_CANCELLED`, and `SALE_REFUND_CREATED/COMPLETED/FAILED/CANCELLED`.
+GETs, authorization/validation failures, rejected caps, number-collision losers,
+duplicate action losers, and rolled-back operations create no audit row.
+
+Phase 14 does not implement void/reversal, exchange, store credit, chargeback,
+processor integration, reports, analytics, frontend, or Postman collections.
+Phase 15 reporting and analytics has not started.
+
 ## Reference catalog behavior
 
 ### Units of measure
@@ -2607,7 +2805,7 @@ Duplicate IDs are rejected. The repository locks the role, verifies every ID,
 preserves bridge rows already present, deletes removed `role_permissions`, inserts
 new ones, and audits sorted before/after permission codes in one transaction. An
 empty array intentionally removes every permission from an ordinary role. It is
-rejected for `SYSTEM_ADMIN` unless all 42 canonical permissions remain.
+rejected for `SYSTEM_ADMIN` unless all 44 canonical permissions remain.
 
 ## Global and branch-scoped user roles
 
@@ -2799,7 +2997,11 @@ The complete Phase 2-13 validation suite covers:
   configuration, branch-aware operational tender, exact split-payment
   commitment, cart/cancellation freeze, sale-completion funding, till drawer
   integration, six audit actions, terminal attempt history, and concurrency-safe
-  payment/till/sale/method races; and
+  payment/till/sale/method races;
+- Phase 14's exact 15-route matrix, two isolated permissions, immutable sale
+  evidence, cumulative quantity and money caps, approval lifecycle, atomic
+  CUSTOMER_RETURN posting, deterministic original-lot restoration, split refunds,
+  cash-till reconciliation, rollback and concurrency outcomes; and
 - exact reverse-FK cleanup of uniquely identified `TEST_*` access-control,
   organization, product-dependency, reference-catalog, pricing, bridge, and
   audit rows.
@@ -2831,9 +3033,11 @@ performs sale changes only through its API and uses isolated direct-SQL
 COMPLETED-payment prerequisites only to preserve the Phase 12 inventory test
 purpose. Phase 13 creates isolated `TEST_P13_*` access, branch, till, catalog,
 stock, method, sale, and payment fixtures, performs payment mutations through
-its API, and removes their exact reverse-FK closure. No suite operates real
-development records or implements refunds, returns, loyalty points, or customer
-financial accounts.
+its API, and removes their exact reverse-FK closure. No suite operates real development records. Phase 14 creates isolated
+`TEST_P14_*` access, branch, till, catalog, stock, sale, return-reason, and
+payment-method prerequisites; it performs return and refund mutations through
+the API and removes their exact reverse-FK closure. No suite implements loyalty
+points or customer financial accounts.
 
 The approved pre-edit Phase 10 baseline was the full Phase 9 regression: 114
 tests passed, 0 failed, 0 skipped, and 0 cancelled. It confirmed the active
@@ -2872,6 +3076,15 @@ cancelled in 132,261.279257 ms. Final read-only verification confirmed
 `supermarket_management` on MySQL 8.0.46 with 54 base tables, 42 canonical
 permissions, one `SYSTEM_ADMIN` role, all 42 canonical mappings, and zero
 remaining `TEST_P13_*` fixtures.
+
+The mandatory pre-edit Phase 13 baseline discovered 184 tests: 184 passed, 0
+failed, 0 skipped, and 0 cancelled in 136,491.948366 ms. The definitive focused
+Phase 14 run discovered 17 tests: 17 passed, 0 failed, 0 skipped, and 0 cancelled
+in 7,526.502006 ms. The definitive full Phase 2-14 regression discovered 201
+tests: 201 passed, 0 failed, 0 skipped, and 0 cancelled in 89,571.317825 ms.
+Final read-only verification confirmed `supermarket_management` on MySQL 8.0.46
+with 54 base tables, 44 canonical permissions, one `SYSTEM_ADMIN` role, all 44
+canonical mappings, and zero remaining `TEST_P14_*` fixtures.
 
 Quick Phase 2 smoke checks after startup:
 
@@ -2973,7 +3186,8 @@ adjustments, physical stock counts, and inter-branch stock transfers. Phase 10
 stops after global customer master/profile and loyalty-identity administration;
 it does not invent financial customer accounts. Phase 11 stops after branch POS register configuration, till-session lifecycle,
 cash movements, and exact drawer reconciliation. Phase 12 stops after OPEN-cart
-management, atomic sale completion and stock posting, or cancellation. Phase 13
-stops after payment-method configuration, PAYMENT tender attempts, split tender,
-payment completeness, and till reconciliation. Refunds, sales returns, and
-void/reversal workflows remain Phase 14 or later work.
+management, atomic sale completion and stock posting, or cancellation. Phase 13 stops after payment-method configuration, PAYMENT tender attempts,
+split tender, payment completeness, and till reconciliation. Phase 14 stops
+after dedicated sales returns, stock restoration, and return-linked REFUND
+settlement. Sale void/reversal, exchanges, store credit, gateway integrations,
+reports, analytics, and frontend work remain later phases.

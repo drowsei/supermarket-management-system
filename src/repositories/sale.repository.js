@@ -174,6 +174,7 @@ async function lockSalePayments(connection, saleId) {
   const [rows] = await connection.execute(
     `SELECT CAST(sp.sale_payment_id AS CHAR) AS salePaymentId,
        CAST(sp.sale_id AS CHAR) AS saleId,
+       CAST(sp.sales_return_id AS CHAR) AS salesReturnId,
        sp.payment_number AS paymentNumber,
        CAST(sp.payment_method_id AS CHAR) AS paymentMethodId,
        CAST(sp.processed_by_employee_id AS CHAR) AS processedByEmployeeId,
