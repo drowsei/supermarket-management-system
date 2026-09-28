@@ -32,11 +32,11 @@ async function setup(fixture) {
   try {
     await connection.beginTransaction();
     const first = await ensureAccessControl(connection); const second = await ensureAccessControl(connection);
-    assert.deepEqual([first.permissionCount, first.assignedPermissionCount, second.permissionCount, second.assignedPermissionCount], [44, 44, 44, 44]);
-    assert.equal(ACCESS_CONTROL_PERMISSIONS.length, 44);
+    assert.deepEqual([first.permissionCount, first.assignedPermissionCount, second.permissionCount, second.assignedPermissionCount], [45, 45, 45, 45]);
+    assert.equal(ACCESS_CONTROL_PERMISSIONS.length, 45);
     const [roles] = await connection.execute('SELECT CAST(role_id AS CHAR) AS id, is_active AS isActive FROM roles WHERE role_code = ?', [SYSTEM_ADMIN_ROLE.code]);
     assert.equal(roles.length, 1); assert.equal(roles[0].isActive, 1); fixture.systemRoleId = roles[0].id;
-    const [mappings] = await connection.execute('SELECT COUNT(*) AS count FROM role_permissions WHERE role_id = ?', [fixture.systemRoleId]); assert.equal(mappings[0].count, '44');
+    const [mappings] = await connection.execute('SELECT COUNT(*) AS count FROM role_permissions WHERE role_id = ?', [fixture.systemRoleId]); assert.equal(mappings[0].count, '45');
     fixture.branchIds = [];
     for (const [suffix, code] of [['SOURCE', 'S'], ['DEST', 'D'], ['OTHER', 'O']]) {
       await connection.execute(`INSERT INTO branches (branch_code, branch_name, address_line_1, city, country_code, currency_code, timezone, status) VALUES (?, ?, '1 Phase 9 Street', 'Lagos', 'NG', 'NGN', 'Africa/Lagos', 'ACTIVE')`, [`TEST_P9_${code}_${fixture.token.slice(0, 8)}`, `${fixture.prefix} ${suffix}`]);

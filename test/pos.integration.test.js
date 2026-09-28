@@ -142,10 +142,10 @@ async function createFixture(fixture) {
         secondSeed.permissionCount,
         secondSeed.assignedPermissionCount,
       ],
-      [44, 44, 44, 44],
+      [45, 45, 45, 45],
     );
-    assert.equal(ACCESS_CONTROL_PERMISSIONS.length, 44);
-    assert.equal(new Set(ACCESS_CONTROL_PERMISSIONS.map(({ code }) => code)).size, 44);
+    assert.equal(ACCESS_CONTROL_PERMISSIONS.length, 45);
+    assert.equal(new Set(ACCESS_CONTROL_PERMISSIONS.map(({ code }) => code)).size, 45);
 
     const permissionCodes = ACCESS_CONTROL_PERMISSIONS.map(({ code }) => code);
     const [permissionRows] = await connection.execute(
@@ -286,7 +286,7 @@ async function createFixture(fixture) {
          AND p.permission_code IN (${placeholders(permissionCodes)})`,
       [fixture.systemRoleId, ...permissionCodes],
     );
-    assert.equal(mappingRows[0].count, '44');
+    assert.equal(mappingRows[0].count, '45');
 
     const passwordHash = await bcrypt.hash(
       `Phase11-${fixture.token}-Password!`,

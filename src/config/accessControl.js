@@ -227,6 +227,11 @@ const ACCESS_CONTROL_PERMISSIONS = Object.freeze(
       name: 'Manage Sales Returns',
       description: 'Create, approve, post, cancel, and refund branch sales returns.',
     },
+    {
+      code: 'reports.read',
+      name: 'Read Reports',
+      description: 'View branch and organization reporting and analytics.',
+    },
   ].map((permission) => Object.freeze(permission)),
 );
 

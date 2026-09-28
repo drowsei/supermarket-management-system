@@ -155,10 +155,10 @@ async function createFixture(fixture) {
     assert.deepEqual(
       [first.permissionCount, first.assignedPermissionCount,
         second.permissionCount, second.assignedPermissionCount],
-      [44, 44, 44, 44],
+      [45, 45, 45, 45],
     );
-    assert.equal(ACCESS_CONTROL_PERMISSIONS.length, 44);
-    assert.equal(new Set(ACCESS_CONTROL_PERMISSIONS.map(({ code }) => code)).size, 44);
+    assert.equal(ACCESS_CONTROL_PERMISSIONS.length, 45);
+    assert.equal(new Set(ACCESS_CONTROL_PERMISSIONS.map(({ code }) => code)).size, 45);
 
     fixture.branchIds = [];
     for (const suffix of ['A', 'B']) {
@@ -588,7 +588,7 @@ test(
           'payment_methods.read', 'payment_methods.manage',
           'payments.read', 'payments.manage',
         ]) assert.equal(ACCESS_CONTROL_PERMISSIONS.some((item) => item.code === code), true);
-        assert.equal(ACCESS_CONTROL_PERMISSIONS.length, 44);
+        assert.equal(ACCESS_CONTROL_PERMISSIONS.length, 45);
         const methodRoutes = await readFile(
           new URL('../src/routes/admin/paymentMethod.routes.js', import.meta.url), 'utf8',
         );

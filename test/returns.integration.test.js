@@ -134,10 +134,10 @@ async function createFixture(fixture) {
     assert.deepEqual(
       [first.permissionCount, first.assignedPermissionCount,
         second.permissionCount, second.assignedPermissionCount],
-      [44, 44, 44, 44],
+      [45, 45, 45, 45],
     );
-    assert.equal(ACCESS_CONTROL_PERMISSIONS.length, 44);
-    assert.equal(new Set(ACCESS_CONTROL_PERMISSIONS.map(({ code }) => code)).size, 44);
+    assert.equal(ACCESS_CONTROL_PERMISSIONS.length, 45);
+    assert.equal(new Set(ACCESS_CONTROL_PERMISSIONS.map(({ code }) => code)).size, 45);
 
     fixture.branchIds = [];
     for (const suffix of ['A', 'B']) {
@@ -728,7 +728,7 @@ test('Phase 14 sales returns and refunds integration', { timeout: TEST_TIMEOUT_M
       for (const code of ['returns.read', 'returns.manage']) {
         assert.equal(ACCESS_CONTROL_PERMISSIONS.some((item) => item.code === code), true);
       }
-      assert.equal(ACCESS_CONTROL_PERMISSIONS.length, 44);
+      assert.equal(ACCESS_CONTROL_PERMISSIONS.length, 45);
       const source = await readFile('src/routes/admin/sales/return.routes.js', 'utf8');
       assert.equal((source.match(/router\.(?:get|post|patch|delete)\(/g) ?? []).length, 15);
       for (const forbidden of ['/exchange', '/store-credit', '/void-sale', 'reports']) {

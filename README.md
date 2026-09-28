@@ -3086,6 +3086,151 @@ Final read-only verification confirmed `supermarket_management` on MySQL 8.0.46
 with 54 base tables, 44 canonical permissions, one `SYSTEM_ADMIN` role, all 44
 canonical mappings, and zero remaining `TEST_P14_*` fixtures.
 
+## Phase 15 reporting and analytics
+
+Phase 15 adds a schema-locked, read-only reporting layer. It creates no report
+or materialized-summary tables, changes no frozen database DDL, writes no audit
+rows, and exposes no report mutation or export route. The layer follows the
+existing controller/service/repository structure, uses parameterized aggregate
+queries, keeps independent one-to-many facts in separate aggregates, and merges
+them only after each fact is reduced to its reporting grain. This prevents sale
+items, tender rows, return items, and refunds from multiplying one another.
+
+The phase adds exactly one canonical permission, `reports.read`, increasing the
+canonical catalog and `SYSTEM_ADMIN` mappings from 44 to 45. The organization
+comparison requires a global grant. Branch routes accept a global grant or a
+grant scoped to that exact branch; separately, an employee-linked user must
+have a current assignment to the target branch under the established Phase 3
+branch-access rule. Unlinked authorized system users are not subject to that
+employee-assignment gate. Reading a report never requires an operational
+employee actor.
+
+The exact Phase 15 route surface is 13 GET endpoints:
+
+- `GET /api/admin/reports/branches`
+- `GET /api/admin/branches/:branchId/reports/overview`
+- `GET /api/admin/branches/:branchId/reports/sales/summary`
+- `GET /api/admin/branches/:branchId/reports/sales/trend`
+- `GET /api/admin/branches/:branchId/reports/products`
+- `GET /api/admin/branches/:branchId/reports/returns`
+- `GET /api/admin/branches/:branchId/reports/payments`
+- `GET /api/admin/branches/:branchId/reports/inventory`
+- `GET /api/admin/branches/:branchId/reports/inventory/movements`
+- `GET /api/admin/branches/:branchId/reports/purchasing`
+- `GET /api/admin/branches/:branchId/reports/suppliers`
+- `GET /api/admin/branches/:branchId/reports/tills`
+- `GET /api/admin/branches/:branchId/reports/customers`
+
+Every transactional route requires inclusive `from=YYYY-MM-DD` and
+`to=YYYY-MM-DD` business dates, with `from <= to` and a maximum of 366 days.
+The current-inventory route is the sole exception because it reports present
+state. Query enums and sort fields are allowlisted, search is bounded and
+parameterized, and paginated routes accept `page >= 1` and `1 <= limit <= 100`.
+IDs remain decimal strings, money and quantities remain exact decimal strings,
+and counts are converted to JavaScript numbers only after safe-integer checks.
+Valid empty reports return HTTP 200 with zero totals and empty items/buckets.
+
+Business-date boundaries are calculated with Node's built-in `Intl` IANA-zone
+support. For each branch, local midnight at `from` becomes an inclusive UTC
+boundary and local midnight after `to` becomes the exclusive UTC boundary. The
+implementation therefore handles DST offsets without `23:59:59` approximations
+or dependence on the host timezone. The organization comparison constructs a
+separate boundary pair for every branch. Trend buckets use branch-local dates,
+Monday-start ISO-style weeks, calendar months, chronological stable ordering,
+and deterministic zero buckets.
+
+Money is never combined across currencies. Every branch response exposes its
+configured `currencyCode`; organization rows retain their branch currency and
+`totalsByCurrency` recomputes totals within each currency. No FX conversion or
+cross-currency grand total is invented.
+
+Physical base quantities are likewise never added across incompatible units.
+Branch-wide and organization-wide summaries expose `quantitiesByUnit`, keyed by
+base UOM identity and display fields, with sold, returned, restockable, and
+non-restockable quantities accumulated only inside the same unit. Product and
+category performance rows return null for the scalar `soldBaseQuantity` and
+`returnedBaseQuantity` fields and expose their exact `quantitiesByUnit`
+breakdown instead; sorting those grouping levels by a scalar base quantity is
+rejected. Variant grouping retains the scalar quantity fields because one variant
+has one base UOM, and also returns that UOM's ID, code, name, and symbol. Monetary
+metrics and persisted sale/return evidence are unchanged by this presentation
+rule.
+
+Report event authorities and definitions are:
+
+- completed sales use `sales.status = 'COMPLETED'` and `sales.sold_at`;
+  `grossSalesAmount` is the persisted sale total, and average sale value is
+  gross sales divided by completed-sale count with deterministic half-up cents;
+- completed merchandise returns use `sales_returns.status = 'COMPLETED'` and
+  `completed_at`; `refund_total_amount` is return entitlement, not proof that
+  money was refunded;
+- collected tender and settled refunds use only completed `sale_payments` and
+  `paid_at`; pending, failed, and cancelled attempts never enter financial
+  totals, and event-period net sales is gross sales minus completed refunds in
+  the selected period even when the original sale occurred earlier;
+- sale-line merchandise revenue before returns is `line_total - tax_amount`;
+  historical cost is `base_quantity * sale_items.unit_cost`, and
+  `grossProfitBeforeReturns` is their difference. A group containing any null
+  historical cost returns null cost/profit plus costed and uncosted line counts.
+  The schema does not snapshot returned tax/discount allocation, so Phase 15
+  deliberately does not claim exact net profit after returns;
+- variant and product grouping use stable current IDs. Current catalog labels
+  are display metadata, while persisted sale-item descriptions/SKUs remain the
+  historical transaction evidence. Category grouping is explicitly a current
+  catalog classification of historical rows because category was not
+  snapshotted on sale items;
+- current on-hand comes from `branch_inventory`, never from a selected-period
+  movement sum. `OUT_OF_STOCK` means quantity at or below zero, `LOW_STOCK`
+  means a positive quantity at or below a positive configured reorder level,
+  and other positive quantities are `IN_STOCK`. Unexpected negative evidence
+  is exposed as inconsistent rather than clamped;
+- current valuation bulk-loads the page's complete ledger history and reuses
+  the sale engine's exact perpetual weighted-average reconstruction. States are
+  `AVAILABLE`, `NO_STOCK`, `NO_COST_HISTORY`, or `INCONSISTENT_HISTORY`; missing
+  cost never becomes zero. Lot summaries use positive quantities and preserve
+  global/branch lot status and branch-local expiry dates;
+- inventory movements use `inventory_transactions.occurred_at`, preserve the
+  persisted quantity sign, and return null extended cost when `unit_cost` is
+  null;
+- purchase-order metrics use `purchase_orders.ordered_at`, while receipt metrics
+  use only posted goods receipts and `goods_receipts.posted_at`. The report
+  exposes line/receipt indicators instead of adding heterogeneous product units;
+- supplier output contains factual order, receipt, line, rejection, and actual
+  received-cost evidence. It invents no on-time percentage or subjective score;
+- till rows are selected by `opened_at`. Drawer evidence follows the approved
+  Phase 11 formula: opening cash + completed cash payments - completed cash
+  refunds + cash in - cash out - cash drops - payouts. Noncash or non-completed
+  tender is excluded, and an open session never receives a fabricated actual
+  closing amount; and
+- customer activity contains identified customers only. Walk-in sales remain a
+  separate overview count and never become a fake customer. No wallet, credit,
+  loyalty-points, receivable, or profitability model is invented.
+
+The repository uses stable unique-ID tie-breakers for every paginated order and
+performs page-first, bulk-history valuation rather than one query per variant.
+The focused `test/reports.integration.test.js` suite creates only isolated
+`TEST_P15_*` evidence and removes its exact reverse-FK closure. It covers all 13
+routes, global/branch/employee authorization, strict validation, BIGINT safety,
+Lagos and New York/DST boundaries, multi-currency grouping, zero buckets,
+anti-join multiplication, sale/return/refund event separation, incompatible EACH/KG quantity isolation,
+historical profit and null-cost behavior, WAC and expiry reporting, signed movements,
+purchasing, supplier, till and customer semantics, stable pagination, and a
+before/after read-only snapshot including audit rows.
+
+The definitive focused Phase 15 run discovered 14 tests: 14 passed, 0 failed,
+0 skipped, and 0 cancelled in 1,317.589885 ms. The definitive full Phase 2-15
+regression discovered 215 tests: 215 passed, 0 failed, 0 skipped, and 0
+cancelled in 47,592.320528 ms.
+
+After the mixed-unit aggregation review correction, the focused Phase 15 run
+discovered 15 tests: 15 passed, 0 failed, 0 skipped, and 0 cancelled in
+2,982.221935 ms. The definitive full Phase 2-15 regression discovered 216 tests:
+216 passed, 0 failed, 0 skipped, and 0 cancelled in 97,495.246125 ms.
+
+Phase 15 changes no dependency, package file, environment file, frozen schema,
+or database design. There is no caching, materialization, export, frontend,
+dashboard UI, Postman collection, or deployment work in this phase.
+
 Quick Phase 2 smoke checks after startup:
 
 ```bash
@@ -3189,5 +3334,7 @@ cash movements, and exact drawer reconciliation. Phase 12 stops after OPEN-cart
 management, atomic sale completion and stock posting, or cancellation. Phase 13 stops after payment-method configuration, PAYMENT tender attempts,
 split tender, payment completeness, and till reconciliation. Phase 14 stops
 after dedicated sales returns, stock restoration, and return-linked REFUND
-settlement. Sale void/reversal, exchanges, store credit, gateway integrations,
-reports, analytics, and frontend work remain later phases.
+settlement. Phase 15 stops after read-only branch and organization reporting,
+analytics, exact branch-local business dates, and current inventory valuation.
+Sale void/reversal, exchanges, store credit, gateway integrations, and frontend
+work remain later phases.
