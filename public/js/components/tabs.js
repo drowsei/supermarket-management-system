@@ -1,0 +1,2 @@
+import { element } from '../ui.js';
+export function tabBar(tabs, active, onSelect) { const bar = element('div', { className: 'tabs', attributes: { role: 'tablist' } }); for (const tab of tabs) { const button = element('button', { className: 'tab', text: tab.label, attributes: { type: 'button', role: 'tab', 'aria-selected': String(tab.id === active) } }); button.addEventListener('click', () => onSelect(tab.id)); bar.append(button); } return bar; }

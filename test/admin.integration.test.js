@@ -17,11 +17,13 @@ const [
   { pool },
   { ACCESS_CONTROL_PERMISSIONS, SYSTEM_ADMIN_ROLE },
   { signAccessToken },
+  { formatEmployeeNumber },
 ] = await Promise.all([
   import('../src/app.js'),
   import('../src/config/database.js'),
   import('../src/config/accessControl.js'),
   import('../src/utils/jwt.js'),
+  import('../src/repositories/employee.repository.js'),
 ]);
 
 const TEST_TIMEOUT_MS = 300_000;
@@ -146,11 +148,8 @@ function createFixtureDefinition() {
     };
   });
 
-  fixture.employeePayloads = ['ONE', 'TERM', 'THREE'].map((suffix, index) => {
-    const employeeNumber = `T4${suffix}_${token}`;
-    fixture.known.employeeNumbers.add(employeeNumber);
+  fixture.employeePayloads = Array.from({ length: 3 }, (_, index) => {
     return {
-      employeeNumber: employeeNumber.toLowerCase(),
       firstName: `PAGED_${token}`,
       lastName: `Employee ${index + 1}`,
       email: `phase4-employee-${index + 1}-${lowerToken}@example.invalid`,
@@ -1121,7 +1120,46 @@ test(
       });
 
       await t.test('administers employees and branch assignment history', async () => {
+        assert.equal(formatEmployeeNumber(1n), 'EMP-001');
+        assert.equal(formatEmployeeNumber(9n), 'EMP-009');
+        assert.equal(formatEmployeeNumber(999n), 'EMP-999');
+        assert.equal(formatEmployeeNumber(1000n), 'EMP-1000');
+
+        const { phone: omittedPhone, ...missingPhonePayload } =
+          fixture.employeePayloads[0];
+        assert.ok(omittedPhone);
+        for (const [label, payload] of [
+          ['MISSING', missingPhonePayload],
+          ['BLANK', { ...fixture.employeePayloads[0], phone: '   ' }],
+          ['NULL', { ...fixture.employeePayloads[0], phone: null }],
+        ]) {
+          const invalidPhone = await sendMutation(
+            fixture,
+            baseUrl,
+            `EMPLOYEE_CREATE_PHONE_${label}`,
+            '/api/admin/employees',
+            { method: 'POST', body: payload },
+          );
+          fixture.failedRequestIds.add(invalidPhone.requestId);
+          assertSafeError(invalidPhone, 400);
+        }
+
+        const suppliedNumber = await sendMutation(
+          fixture,
+          baseUrl,
+          'EMPLOYEE_CREATE_SUPPLIED_NUMBER',
+          '/api/admin/employees',
+          {
+            method: 'POST',
+            body: { ...fixture.employeePayloads[0], employeeNumber: 'EMP-000' },
+          },
+        );
+        fixture.failedRequestIds.add(suppliedNumber.requestId);
+        assertSafeError(suppliedNumber, 400);
+
         fixture.employeeIds = [];
+        fixture.employeeNumbers = [];
+        const employeeCreateResults = [];
         for (const [index, payload] of fixture.employeePayloads.entries()) {
           const result = await sendMutation(
             fixture,
@@ -1131,6 +1169,7 @@ test(
             { method: 'POST', body: payload },
           );
           assert.equal(result.response.status, 201);
+          employeeCreateResults.push(result);
           const employee = result.json.data.employee;
           const employeeId = rememberEntity(
             fixture,
@@ -1138,9 +1177,32 @@ test(
             employee.employeeId,
           );
           fixture.employeeIds.push(employeeId);
-          assert.equal(employee.employeeNumber, payload.employeeNumber.toUpperCase());
+          fixture.employeeNumbers.push(employee.employeeNumber);
+          fixture.known.employeeNumbers.add(employee.employeeNumber);
+          assert.match(employee.employeeNumber, /^EMP-\d{3,}$/);
+          assert.equal(employee.phone, payload.phone);
           assert.equal(employee.employmentStatus, 'ACTIVE');
         }
+
+        const generatedSequences = fixture.employeeNumbers.map((employeeNumber) =>
+          BigInt(employeeNumber.slice(4)),
+        );
+        assert.equal(generatedSequences[1] > generatedSequences[0], true);
+        assert.equal(generatedSequences[2] > generatedSequences[1], true);
+        assert.equal(new Set(fixture.employeeNumbers).size, 3);
+
+        const [createdAuditRows] = await pool.execute(
+          `SELECT after_values AS afterValues
+           FROM audit_logs
+           WHERE request_id = ? AND action_type = 'EMPLOYEE_CREATED'`,
+          [employeeCreateResults[0].requestId],
+        );
+        assert.equal(createdAuditRows.length, 1);
+        const createdAuditValues =
+          typeof createdAuditRows[0].afterValues === 'string'
+            ? JSON.parse(createdAuditRows[0].afterValues)
+            : createdAuditRows[0].afterValues;
+        assert.equal(createdAuditValues.employeeNumber, fixture.employeeNumbers[0]);
 
         const [employeeId] = fixture.employeeIds;
         const duplicate = await sendMutation(
@@ -1152,6 +1214,48 @@ test(
         );
         fixture.failedRequestIds.add(duplicate.requestId);
         assertSafeError(duplicate, 409);
+
+        const immutableNumber = await sendMutation(
+          fixture,
+          baseUrl,
+          'EMPLOYEE_NUMBER_IMMUTABLE',
+          `/api/admin/employees/${employeeId}`,
+          { method: 'PATCH', body: { employeeNumber: 'EMP-999999' } },
+        );
+        fixture.failedRequestIds.add(immutableNumber.requestId);
+        assertSafeError(immutableNumber, 400);
+
+        const phoneOmitted = await sendMutation(
+          fixture,
+          baseUrl,
+          'EMPLOYEE_UPDATE_PHONE_OMITTED',
+          `/api/admin/employees/${employeeId}`,
+          { method: 'PATCH', body: { lastName: 'Employee 1 Updated' } },
+        );
+        assert.equal(phoneOmitted.response.status, 200);
+        assert.equal(
+          phoneOmitted.json.data.employee.phone,
+          fixture.employeePayloads[0].phone,
+        );
+        assert.equal(
+          phoneOmitted.json.data.employee.employeeNumber,
+          fixture.employeeNumbers[0],
+        );
+
+        for (const [label, phone] of [
+          ['BLANK', '   '],
+          ['NULL', null],
+        ]) {
+          const invalidPhone = await sendMutation(
+            fixture,
+            baseUrl,
+            `EMPLOYEE_UPDATE_PHONE_${label}`,
+            `/api/admin/employees/${employeeId}`,
+            { method: 'PATCH', body: { phone } },
+          );
+          fixture.failedRequestIds.add(invalidPhone.requestId);
+          assertSafeError(invalidPhone, 400);
+        }
 
         const updated = await sendMutation(
           fixture,
@@ -1178,7 +1282,7 @@ test(
         const firstAssignment = await sendMutation(
           fixture,
           baseUrl,
-          'ASSIGNMENT_CREATE_PRIMARY',
+          'ASSIGNMENT_CREATE_FIRST_AUTO_PRIMARY',
           `/api/admin/employees/${employeeId}/assignments`,
           {
             method: 'POST',
@@ -1186,16 +1290,39 @@ test(
               branchId: activeBranchOne,
               jobTitle: 'Cashier',
               startedOn: '2021-01-01',
-              isPrimary: true,
+              isPrimary: false,
             },
           },
         );
         assert.equal(firstAssignment.response.status, 201);
+        assert.equal(firstAssignment.json.data.assignment.isPrimary, true);
+        assertIdString(firstAssignment.json.data.assignment.assignmentId);
         fixture.firstAssignmentId = rememberEntity(
           fixture,
           'assignments',
           firstAssignment.json.data.assignment.assignmentId,
         );
+        const [firstAssignmentRows] = await pool.execute(
+          `SELECT is_primary AS isPrimary
+           FROM employee_branch_assignments
+           WHERE assignment_id = ?`,
+          [fixture.firstAssignmentId],
+        );
+        assert.equal(firstAssignmentRows[0].isPrimary, 1);
+
+        const [firstAssignmentAuditRows] = await pool.execute(
+          `SELECT after_values AS afterValues
+           FROM audit_logs
+           WHERE request_id = ?
+             AND action_type = 'EMPLOYEE_BRANCH_ASSIGNED'`,
+          [firstAssignment.requestId],
+        );
+        assert.equal(firstAssignmentAuditRows.length, 1);
+        const firstAssignmentAfterValues =
+          typeof firstAssignmentAuditRows[0].afterValues === 'string'
+            ? JSON.parse(firstAssignmentAuditRows[0].afterValues)
+            : firstAssignmentAuditRows[0].afterValues;
+        assert.equal(firstAssignmentAfterValues.isPrimary, true);
 
         const secondAssignment = await sendMutation(
           fixture,
@@ -1213,11 +1340,38 @@ test(
           },
         );
         assert.equal(secondAssignment.response.status, 201);
+        assert.equal(secondAssignment.json.data.assignment.isPrimary, false);
         fixture.secondAssignmentId = rememberEntity(
           fixture,
           'assignments',
           secondAssignment.json.data.assignment.assignmentId,
         );
+
+        const initialPrimaryList = await sendRequest(
+          baseUrl,
+          `/api/admin/employees?search=${encodeURIComponent(fixture.employeeNumbers[0])}`,
+          { token: fixture.adminToken },
+        );
+        assert.equal(initialPrimaryList.response.status, 200);
+        assertPagination(initialPrimaryList.json.data, { totalItems: 1 });
+        const [initialPrimaryEmployee] = initialPrimaryList.json.data.items;
+        assertIdString(initialPrimaryEmployee.employeeId);
+        assert.equal(
+          initialPrimaryEmployee.primaryBranchName,
+          fixture.branchPayloads[1].branchName,
+        );
+        assert.equal(initialPrimaryEmployee.primaryJobTitle, 'Cashier');
+        assert.equal(Object.hasOwn(initialPrimaryEmployee, 'primaryBranchId'), false);
+        assert.equal(Object.hasOwn(initialPrimaryEmployee, 'primaryAssignmentId'), false);
+        const [initialPrimaryRows] = await pool.execute(
+          `SELECT CAST(assignment_id AS CHAR) AS assignmentId
+           FROM employee_branch_assignments
+           WHERE employee_id = ? AND ended_on IS NULL AND is_primary = 1`,
+          [employeeId],
+        );
+        assert.deepEqual(initialPrimaryRows, [
+          { assignmentId: fixture.firstAssignmentId },
+        ]);
 
         const overlapping = await sendMutation(
           fixture,
@@ -1265,6 +1419,21 @@ test(
         assert.equal(madePrimary.response.status, 200);
         assert.equal(madePrimary.json.data.assignment.isPrimary, true);
 
+        const changedPrimaryList = await sendRequest(
+          baseUrl,
+          `/api/admin/employees?search=${encodeURIComponent(fixture.employeeNumbers[0])}`,
+          { token: fixture.adminToken },
+        );
+        assert.equal(changedPrimaryList.response.status, 200);
+        assert.equal(
+          changedPrimaryList.json.data.items[0].primaryBranchName,
+          fixture.branchPayloads[2].branchName,
+        );
+        assert.equal(
+          changedPrimaryList.json.data.items[0].primaryJobTitle,
+          'Relief Cashier',
+        );
+
         const [primaryRows] = await pool.execute(
           `SELECT CAST(assignment_id AS CHAR) AS assignmentId
            FROM employee_branch_assignments
@@ -1283,6 +1452,15 @@ test(
         assert.equal(ended.response.status, 200);
         assert.equal(ended.json.data.assignment.endedOn, fixture.currentDate);
         assert.equal(ended.json.data.assignment.isPrimary, false);
+
+        const noCurrentPrimaryList = await sendRequest(
+          baseUrl,
+          `/api/admin/employees?search=${encodeURIComponent(fixture.employeeNumbers[0])}`,
+          { token: fixture.adminToken },
+        );
+        assert.equal(noCurrentPrimaryList.response.status, 200);
+        assert.equal(noCurrentPrimaryList.json.data.items[0].primaryBranchName, null);
+        assert.equal(noCurrentPrimaryList.json.data.items[0].primaryJobTitle, null);
 
         const idempotentEnd = await sendMutation(
           fixture,
@@ -1352,6 +1530,98 @@ test(
           );
           assertSafeError(invalid, 400);
         }
+
+        const explicitPrimaryEmployeeId = fixture.employeeIds[2];
+        const explicitFirstPrimary = await sendMutation(
+          fixture,
+          baseUrl,
+          'ASSIGNMENT_CREATE_EXPLICIT_FIRST_PRIMARY',
+          `/api/admin/employees/${explicitPrimaryEmployeeId}/assignments`,
+          {
+            method: 'POST',
+            body: {
+              branchId: activeBranchOne,
+              jobTitle: 'Inventory Officer',
+              startedOn: '2021-01-01',
+              isPrimary: true,
+            },
+          },
+        );
+        assert.equal(explicitFirstPrimary.response.status, 201);
+        assert.equal(explicitFirstPrimary.json.data.assignment.isPrimary, true);
+        const explicitFirstPrimaryId = rememberEntity(
+          fixture,
+          'assignments',
+          explicitFirstPrimary.json.data.assignment.assignmentId,
+        );
+
+        const explicitSecondPrimary = await sendMutation(
+          fixture,
+          baseUrl,
+          'ASSIGNMENT_CREATE_EXPLICIT_SECOND_PRIMARY',
+          `/api/admin/employees/${explicitPrimaryEmployeeId}/assignments`,
+          {
+            method: 'POST',
+            body: {
+              branchId: activeBranchTwo,
+              jobTitle: 'Senior Inventory Officer',
+              startedOn: '2021-02-01',
+              isPrimary: true,
+            },
+          },
+        );
+        assert.equal(explicitSecondPrimary.response.status, 201);
+        assert.equal(explicitSecondPrimary.json.data.assignment.isPrimary, true);
+        const explicitSecondPrimaryId = rememberEntity(
+          fixture,
+          'assignments',
+          explicitSecondPrimary.json.data.assignment.assignmentId,
+        );
+        const [explicitPrimaryRows] = await pool.execute(
+          `SELECT
+             CAST(assignment_id AS CHAR) AS assignmentId,
+             is_primary AS isPrimary
+           FROM employee_branch_assignments
+           WHERE assignment_id IN (?, ?)
+           ORDER BY assignment_id`,
+          [explicitFirstPrimaryId, explicitSecondPrimaryId],
+        );
+        assert.deepEqual(explicitPrimaryRows, [
+          { assignmentId: explicitFirstPrimaryId, isPrimary: 0 },
+          { assignmentId: explicitSecondPrimaryId, isPrimary: 1 },
+        ]);
+
+        const concurrentPayloads = [0, 1].map((index) => ({
+          ...fixture.employeePayloads[0],
+          firstName: `Concurrent ${index + 1}`,
+          lastName: `Sequence ${fixture.token}`,
+          email: `phase4-concurrent-${index + 1}-${fixture.lowerToken}@example.invalid`,
+          phone: `+23482200000${index}`,
+        }));
+        const concurrentCreates = await Promise.all(
+          concurrentPayloads.map((payload, index) =>
+            sendMutation(
+              fixture,
+              baseUrl,
+              `EMPLOYEE_CREATE_CONCURRENT_${index}`,
+              '/api/admin/employees',
+              { method: 'POST', body: payload },
+            ),
+          ),
+        );
+        const concurrentSequences = [];
+        for (const result of concurrentCreates) {
+          assert.equal(result.response.status, 201);
+          const employee = result.json.data.employee;
+          rememberEntity(fixture, 'employees', employee.employeeId);
+          fixture.known.employeeNumbers.add(employee.employeeNumber);
+          assert.match(employee.employeeNumber, /^EMP-\d{3,}$/);
+          concurrentSequences.push(BigInt(employee.employeeNumber.slice(4)));
+        }
+        concurrentSequences.sort((left, right) =>
+          left < right ? -1 : left > right ? 1 : 0,
+        );
+        assert.equal(concurrentSequences[1], concurrentSequences[0] + 1n);
       });
 
       await t.test('provisions and administers internal user accounts safely', async () => {
@@ -2105,6 +2375,51 @@ test(
         assert.equal(stateRows[0].userIsActive, 0);
         assert.equal(stateRows[0].assignmentIsPrimary, 0);
 
+        const postTerminationEmployee = await sendMutation(
+          fixture,
+          baseUrl,
+          'EMPLOYEE_CREATE_AFTER_TERMINATION',
+          '/api/admin/employees',
+          {
+            method: 'POST',
+            body: {
+              firstName: 'After termination',
+              lastName: `Sequence ${fixture.token}`,
+              email: `phase4-after-termination-${fixture.lowerToken}@example.invalid`,
+              phone: '+2348330000000',
+              hireDate: fixture.currentDate,
+              employmentStatus: 'ACTIVE',
+            },
+          },
+        );
+        assert.equal(postTerminationEmployee.response.status, 201);
+        const createdAfterTermination = postTerminationEmployee.json.data.employee;
+        rememberEntity(fixture, 'employees', createdAfterTermination.employeeId);
+        fixture.known.employeeNumbers.add(createdAfterTermination.employeeNumber);
+        assert.equal(
+          BigInt(createdAfterTermination.employeeNumber.slice(4)) >
+            BigInt(fixture.employeeNumbers[1].slice(4)),
+          true,
+        );
+
+        const terminatedAssignment = await sendMutation(
+          fixture,
+          baseUrl,
+          'TERMINATED_EMPLOYEE_ASSIGNMENT',
+          `/api/admin/employees/${terminationEmployeeId}/assignments`,
+          {
+            method: 'POST',
+            body: {
+              branchId: fixture.branchIds[2],
+              jobTitle: 'Invalid assignment',
+              startedOn: fixture.currentDate,
+              isPrimary: false,
+            },
+          },
+        );
+        fixture.failedRequestIds.add(terminatedAssignment.requestId);
+        assertSafeError(terminatedAssignment, 409);
+
         const unsafeReactivation = await sendMutation(
           fixture,
           baseUrl,
@@ -2141,6 +2456,8 @@ test(
         );
         assert.equal(terminatedList.response.status, 200);
         assertPagination(terminatedList.json.data, { totalItems: 1 });
+        assert.equal(terminatedList.json.data.items[0].primaryBranchName, null);
+        assert.equal(terminatedList.json.data.items[0].primaryJobTitle, null);
       });
 
       await t.test('keeps master data and permission definitions off DELETE APIs', async () => {

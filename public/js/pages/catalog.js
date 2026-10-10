@@ -1,0 +1,2 @@
+import { catalogConfigs } from '../contracts.js';import { renderResourcePage } from '../components/resourcePage.js';import { renderWorkspace } from './workspace.js';
+export function renderCatalog(root,context){const tabs=catalogConfigs.map((config)=>({id:config.key,label:config.title,render:(pane)=>renderResourcePage(pane,config,context)}));return renderWorkspace(root,{tabs,active:context.query.tab,context:{...context,route:'catalog'}});}

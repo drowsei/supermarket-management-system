@@ -1,0 +1,2 @@
+import { packagePriceConfig,variantPriceConfig } from '../contracts.js';import { renderResourcePage } from '../components/resourcePage.js';import { renderWorkspace } from './workspace.js';
+export function renderPricing(root,context){return renderWorkspace(root,{active:context.query.tab,context:{...context,route:'pricing'},tabs:[{id:'variants',label:'Variant prices',render:(pane)=>renderResourcePage(pane,variantPriceConfig,context)},{id:'packages',label:'Package prices',render:(pane)=>renderResourcePage(pane,packagePriceConfig,context)}]});}

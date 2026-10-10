@@ -1,0 +1,1 @@
+import { customerConfig } from '../contracts.js';import { resourceRenderer } from './simpleResource.js';export const renderCustomers=resourceRenderer(customerConfig);

@@ -1,0 +1,3 @@
+import { permissionConfig,roleConfig,userConfig } from '../contracts.js';import { renderResourcePage } from '../components/resourcePage.js';import { renderWorkspace } from './workspace.js';
+export function renderUsers(root,context){return renderResourcePage(root,userConfig,context);}
+export function renderRoles(root,context){return renderWorkspace(root,{active:context.query.tab,context:{...context,route:'roles'},tabs:[{id:'roles',label:'Roles',render:(pane)=>renderResourcePage(pane,roleConfig,context)},{id:'permissions',label:'Permission catalog',render:(pane)=>renderResourcePage(pane,permissionConfig,context)}]});}

@@ -1,36 +1,12 @@
 # Supermarket Management System
 
-A production-oriented, multi-branch supermarket management system built in
-reviewed phases. Phase 14 adds branch-aware sales returns, auditable stock
-restoration, and return-linked refund settlement on top of the approved Phase 13
-tender engine and frozen 54-table database.
+A production-oriented, multi-branch supermarket management system built in reviewed phases. Phase 16 adds a same-origin, responsive administration interface over the approved Phase 2–15 REST API and frozen 54-table database. The browser UI covers authentication, branch context, administration, catalog, pricing, suppliers, purchasing and receiving, inventory workflows, customers, POS and tills, checkout and tender, returns and refunds, and read-only analytics.
 
-The current API reads branch inventory and historical stock transactions,
-configures reorder settings and branch lot availability, and atomically posts
-adjustments, count corrections, transfer dispatches, and transfer receipts. It operates branch
-purchase orders, goods receipts, receipt-time lot allocation, and the
-stock-ledger posting required by receiving. It also
-operates supplier masters and supplier catalog relationships, configures prices
-per branch, and resolves the currently effective variant or package price. It
-operates products,
-sellable/stockable variants, unit-conversion packages, case-sensitive barcodes,
-units of measure, hierarchical categories, brands, tax rates, and the existing
-organization and access records. It now also administers individual and
-business customer profiles without inventing a financial customer-account
-model. It configures physical branch registers, opens and controls cashier till
-sessions, records append-only drawer movements, and closes drawers against
-persisted cash evidence. It records exact split tender, enforces payment completeness before sale
-completion, and preserves payment attempt history. It now also records returned
-merchandise separately from the original sale, posts restockable returns through
-the inventory ledger, and settles exact return-linked refunds. It retains all
-Phase 2-13 behavior.
+The backend remains the sole authority for authentication, authorization, exact pricing, inventory movement, checkout totals, tender caps, refunds, till reconciliation, lifecycle transitions, and reports. The frontend uses vanilla HTML, CSS, and JavaScript ES modules, creates no browser-side business database, and adds no frontend dependency or build system.
 
-Phases 5A, 5B, 5C, 6, 7, 8, 9, 10, 11, 12, 13, and 14 do **not** redesign the database. The approved
-[`database/schema.sql`](database/schema.sql) and detailed
-[`database/README.md`](database/README.md) remain the authority for the existing
-54 tables.
+The approved [`database/schema.sql`](database/schema.sql) and detailed [`database/README.md`](database/README.md) remain the authority for the existing 54 tables. Phase 16 does not redesign the schema or change Phase 4–15 API business behavior.
 
-## Phase 5A through Phase 14 purpose and boundaries
+## Phase 5A through Phase 16 purpose and boundaries
 
 Reference catalog records describe shared business concepts that products will
 reference later. They are organization-wide configuration, not branch stock,
@@ -137,9 +113,14 @@ till relationships for dedicated return documents, original-provenance stock
 restoration, and return-linked REFUND attempts. It does not change the database
 schema or rewrite original sale history.
 
+Phase 15 adds 13 read-only reporting endpoints, one canonical `reports.read` permission, branch-timezone business dates, exact historical financial evidence, separate currency totals, and unit-safe physical quantity breakdowns. It adds no report table, cache, export, or write route.
+
+Phase 16 serves a static browser client from `public/` through the existing Express application. It adds no backend permission, dependency, database table, business audit type, report calculation, Postman artifact, or deployment configuration. Hash routes are frontend-only; all business calls continue to use the existing protected `/api/...` endpoints.
+
 ## Technology stack
 
 - Node.js 20+ with ES Modules
+- Vanilla HTML, CSS, and browser JavaScript ES modules
 - Express 5 REST API
 - MySQL 8.0.16+ through `mysql2/promise`
 - bcrypt password hashing
@@ -156,10 +137,12 @@ No ORM is used. Repository SQL is explicit and parameterized.
 
 ## Architecture
 
-HTTP administration requests follow the same layered path as authentication:
+Browser requests follow two paths. Static UI files are served only from `public/`; business data always uses the same-origin API:
 
 ```text
-route
+hash-routed browser page
+  -> shared Fetch API client
+  -> /api route
   -> authentication / password-state / permission middleware
   -> controller
   -> service
@@ -3238,6 +3221,128 @@ curl -i http://localhost:5000/api/health
 curl -i http://localhost:5000/api/health/database
 curl -i http://localhost:5000/something-that-does-not-exist
 ```
+
+## Phase 16 browser administration UI
+
+### Static architecture and delivery
+
+The frontend is a build-free static application under `public/`. Express serves only that directory after the existing health, authentication, and administration routers, so static delivery cannot expose `.env`, database files, or server source. Unknown `/api/*` requests still reach the existing JSON 404 middleware. Helmet remains enabled with its secure content-security defaults; scripts and styles are same-origin external files, with no inline handlers or `unsafe-eval` requirement.
+
+`src/app.js` contains the only server change: resolution of `public/` and `express.static(publicDirectory)`. No controller, service, repository, validator, route contract, permission, or business state machine was changed.
+
+```text
+public/
+├── index.html
+├── login.html
+├── css/
+│   ├── tokens.css
+│   ├── base.css
+│   ├── layout.css
+│   ├── components.css
+│   ├── forms.css
+│   ├── tables.css
+│   ├── dashboard.css
+│   ├── responsive.css
+│   └── ux.css                # focused workflow, selector, table, and responsive refinements
+└── js/
+    ├── app.js                 # boot, shell, branch selector, route dispatch
+    ├── api.js                 # same-origin authenticated Fetch client
+    ├── auth.js                # login/session/change-password/logout state
+    ├── branchContext.js       # authoritative metadata versus scoped identity
+    ├── contracts.js           # discovered Phase 4–15 route/form contracts
+    ├── permissions.js         # global/branch grant visibility helpers
+    ├── reportState.js         # report filters and backend pagination state
+    ├── router.js              # lightweight hash parser
+    ├── state.js               # small in-memory session/page state
+    ├── formatters.js          # exact display and unit/currency helpers
+    ├── validation.js          # client-side decimal/date/ID checks
+    ├── ui.js                  # textContent-based DOM primitives
+    ├── components/            # tables, forms, action workflows, dialogs, states, charts
+    └── pages/                 # domain workspaces and reports
+```
+
+There is no `dist/`, bundler, server-side template engine, external CDN, frontend framework, chart package, or added npm dependency. `package.json` and `package-lock.json` remain unchanged.
+
+### Authentication and session policy
+
+The login screen submits only `identifier` and `password` to `POST /api/auth/login`. It stores the returned access token in `sessionStorage` under `supermarket.accessToken`, immediately reloads current authority from `GET /api/auth/me`, and never decodes JWT permission claims. Passwords and tokens are never rendered or logged. A 401 clears the token, selected branch, and in-memory session before returning to login with neutral expiry copy.
+
+When `mustChangePassword` is true, routing is forced to `#/change-password` and the normal shell is withheld. A successful `POST /api/auth/change-password` clears the form, reloads `/api/auth/me`, and restores navigation only after the server reports the requirement cleared. Logout is intentionally client-side because no backend logout endpoint exists: it clears session state and returns to login.
+
+### Permission and branch context
+
+Navigation uses the exact 45-code authorization snapshot returned by `/api/auth/me`. Read permissions expose modules; manage permissions expose mutations. A global grant satisfies the permission-scope portion for every branch, while a branch grant satisfies only the exact string branch ID. Separately, the backend continues to enforce the current employee-assignment gate for employee-linked users regardless of whether the qualifying permission is global or branch-scoped. The UI does not treat hidden controls as security and handles backend 403 responses.
+
+Branch IDs stay strings, including values beyond `Number.MAX_SAFE_INTEGER`. The selector is populated from accessible branch records and scoped grant IDs, persists only the selected string in session storage, and starts a new request generation on every branch-scoped load. Older responses cannot overwrite a newer branch or filter result. Employee-linked branch eligibility cannot be fully inferred from `/api/auth/me`; the server remains authoritative and may return 403.
+
+An ID present only in the scoped authorization map is treated as branch identity,
+not branch metadata. The UI never fabricates a branch name, currency, or UTC
+timezone from that grant. When the user has branch-scoped `reports.read`, the
+existing authorized current-inventory report supplies the real branch name,
+currency, and IANA timezone. If that request is unavailable or unauthorized,
+the selector clearly labels the ID as metadata unavailable and the dashboard
+and branch report hub block timezone/currency-sensitive execution instead of
+substituting UTC, the browser timezone, another branch's currency, or an empty
+currency.
+
+### Shell, responsive behavior, and accessibility
+
+The application uses a restrained light business interface with shared tokens, a collapsible desktop sidebar, mobile drawer, sticky top bar, visible branch context, account menu, reusable cards/tables/forms/status badges, and horizontally scrollable tables. Layout breakpoints cover narrow mobile through large desktop without a second application port. Dialogs manage initial focus, keyboard tab containment, Escape dismissal, and focus restoration.
+
+Pages use semantic headings, labels, real buttons, a skip link, visible focus rings, live toast/error regions, table captions, text-bearing status badges, reduced-motion support, and responsive stacking. API text is written through `textContent`/`createElement`; no API value is assigned to `innerHTML`, style, event-handler attributes, or script URLs.
+
+### Implemented workspaces
+
+The hash router implements `#/login`, `#/change-password`, `#/dashboard`, `#/branches`, `#/employees`, `#/users`, `#/roles`, `#/catalog`, `#/products`, `#/pricing`, `#/suppliers`, `#/purchasing`, `#/inventory`, `#/inventory-operations`, `#/customers`, `#/pos`, `#/sales`, `#/returns`, `#/reports`, and `#/profile`. Unknown hash routes render a frontend not-found state without calling an invented API.
+
+The UI exposes only discovered backend operations:
+
+- branch create/update and lifecycle fields;
+- employee create/update/termination and assignment create/end/primary workflows;
+- internal user provisioning/reset, scoped role grants/revocation, roles, and the read-only permission catalog;
+- units, categories, brands, tax rates, products, variants, conversion packages, and barcodes;
+- branch variant/package price configuration and server-side effective-price resolution;
+- supplier master, supplier-variant, and supplier-package relationships;
+- purchase-order items/transitions and goods-receipt items/posting, including exact lot-allocation JSON for the existing nested posting contract;
+- current stock, reorder configuration, lots, and the read-only append-only movement ledger;
+- adjustments, physical counts, count participants/results, and transfer request/approval/dispatch/receipt workflows;
+- individual/business customer profiles;
+- POS registers, till opening, drawer movement, suspension/resumption, close/reconciliation, and cancellation;
+- open sales, line entry by barcode or explicit SKU/package, split payment attempts, tender resolution, and sale completion/cancellation;
+- dedicated return documents, returned items, approval/completion/cancellation, and distinct refund-attempt settlement; and
+- profile-safe identity, current roles, and permission summaries.
+
+
+
+Remote entity selectors reuse existing authorized list and detail APIs, preserve BIGINT IDs as strings, debounce searches, cancel stale requests, and show explicit loading, empty, forbidden, and failure states. Checkout offers only open till sessions; payments and returns use human-readable sale selectors; refunds use completed returns. Supplier packages follow supplier selection, then supplier-product selection, then the nested package-mapping workspace. Till list responses do not expose register or cashier names, so the selector truthfully shows their IDs rather than inventing labels.
+
+Tables show readable booleans and enum labels, keep the two primary row actions visible, and move additional actions into a secondary menu. Report selection is grouped by business area while preserving all 12 branch reports and the separately authorized organization report. `ux.css` is loaded after `responsive.css`, allowing the focused correction layer to refine the existing responsive architecture without a build step.
+Forms keep money and quantity inputs as raw decimal strings and IDs as strings. Financial, tax, weighted-cost, refund, drawer, stock, and report calculations are never recomputed as browser authority. Irreversible lifecycle actions require internal confirmation and mutation buttons use a per-button submission lock. Actions that require both fields and confirmation keep one modal and present an accessible inline confirmation state: Cancel restores the unchanged entered values, while Confirm submits the captured request body exactly once and keeps URL-only IDs out of the body. Fieldless actions retain the simple confirmation dialog. Lists use backend search/filter/page contracts, a 320 ms debounce, abort/request-generation protection, and reusable loading, empty, error, and pagination states.
+
+### Dashboard and reports
+
+The branch dashboard calls the report overview and sales-trend endpoints only when real branch metadata is available and uses the configured branch timezone for the visible date range. Its metric cards use persisted report values and its dependency-free CSS/SVG-style bar visualization includes an accessible values fallback. The Reports hub exposes all 12 branch report routes plus the globally authorized organization comparison, for 13 existing GET routes and zero report writes.
+
+The organization comparison, product performance, returns, current inventory,
+inventory movements, suppliers, tills, and customers views consume the API's
+existing pagination object and issue fresh backend requests for page changes.
+Page, limit, dates, report tab, and `groupBy` remain request state; changing a
+filter, date, or grouping resets the page to one. Abort controllers and request
+generations prevent a slower old page from replacing the latest result. Reports
+whose backend contracts are not paginated receive no synthetic browser
+pagination, and zero-row pages remain successful empty states.
+
+Physical quantities render through `quantitiesByUnit`; EACH and KG remain separate and product/category scalar quantities may remain null. Organization money uses the API's `totalsByCurrency`, so NGN and GBP are never combined. Null historical profit is shown as unavailable rather than zero. Inventory `NO_COST_HISTORY`/`INCONSISTENT_HISTORY` evidence remains visible rather than being converted to a fabricated valuation.
+
+### Frontend errors and tests
+
+The shared API client adds bearer and JSON headers, safely parses JSON, accepts abort signals, normalizes 400/401/403/404/409/429/5xx failures, and never logs secrets. Zero-row 200 reports render as valid no-activity states. The browser performs no direct MySQL access and keeps no persistent business-data cache.
+
+`test/frontend.integration.test.js` uses Node's built-in runner and no new test dependency. It covers static delivery, API 404 preservation, external-script HTML, permission and navigation helpers, global/exact-branch scope, identity-only scoped branches, authoritative report-metadata hydration, BIGINT and selector ID strings, decimal strings, encoded queries, date ranges and branch-timezone conversion, open-till eligibility, source-branch exclusion, supplier/sale selector labels, readable enum/boolean values, supplier-package navigation, UX stylesheet ordering, named header controls, separate mixed units and currencies, complete authorized report navigation, exact paginated-report selection, page/filter state, stale page and branch generations, action cancellation value preservation, path-only request fields, exact-once confirmation submission, hash routing, token clearing, duplicate-submit locking, DOM injection-sink scanning, public secret scanning, route namespaces, the exact 13-report surface, module coverage, and Phase 17/deployment absence.
+
+Manual browser verification requires an available browser surface and valid local application credentials. The implementation session had no controllable browser registered, so it performed deterministic HTTP/static and automated integration smoke checks instead and does not claim browser E2E verification. A reviewer can run `npm start`, open `http://localhost:5000/#/login`, and exercise the manual matrix without a second server.
+
+Phase 16 adds no schema change, report write, audit vocabulary, backend permission, Postman collection, or deployment work. Phase 17 remains outside this implementation.
 
 ## Practical learning summary
 

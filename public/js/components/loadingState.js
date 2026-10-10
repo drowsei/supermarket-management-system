@@ -1,0 +1,1 @@
+import { element } from '../ui.js'; export function loadingState(label='Loading…'){return element('div',{className:'card state-panel',attributes:{role:'status'}},[element('h2',{text:label}),element('p',{className:'muted',text:'Please wait while the latest information is loaded.'})]);}

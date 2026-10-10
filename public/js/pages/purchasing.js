@@ -1,0 +1,2 @@
+import { goodsReceiptConfig,purchaseOrderConfig } from '../contracts.js';import { renderResourcePage } from '../components/resourcePage.js';import { renderWorkspace } from './workspace.js';
+export function renderPurchasing(root,context){return renderWorkspace(root,{active:context.query.tab,context:{...context,route:'purchasing'},tabs:[{id:'orders',label:'Purchase orders',render:(pane)=>renderResourcePage(pane,purchaseOrderConfig,context)},{id:'receipts',label:'Goods receipts',render:(pane)=>renderResourcePage(pane,goodsReceiptConfig,context)}]});}

@@ -16,6 +16,28 @@ const EMPLOYEE_COLUMNS = `
   e.updated_at AS updatedAt
 `;
 
+const EMPLOYEE_LIST_COLUMNS = `
+  ${EMPLOYEE_COLUMNS},
+  primary_branch.branch_name AS primaryBranchName,
+  primary_assignment.job_title AS primaryJobTitle
+`;
+
+const EMPLOYEE_LIST_JOINS = `
+  LEFT JOIN (
+    SELECT employee_id, MAX(assignment_id) AS assignment_id
+    FROM employee_branch_assignments
+    WHERE ended_on IS NULL AND is_primary = 1
+    GROUP BY employee_id
+    HAVING COUNT(*) = 1
+  ) current_primary
+    ON current_primary.employee_id = e.employee_id
+   AND e.employment_status <> 'TERMINATED'
+  LEFT JOIN employee_branch_assignments primary_assignment
+    ON primary_assignment.assignment_id = current_primary.assignment_id
+  LEFT JOIN branches primary_branch
+    ON primary_branch.branch_id = primary_assignment.branch_id
+`;
+
 const ASSIGNMENT_COLUMNS = `
   CAST(eba.assignment_id AS CHAR) AS assignmentId,
   CAST(eba.employee_id AS CHAR) AS employeeId,
@@ -32,7 +54,6 @@ const ASSIGNMENT_COLUMNS = `
 `;
 
 const EMPLOYEE_UPDATE_COLUMNS = {
-  employeeNumber: 'employee_number',
   firstName: 'first_name',
   lastName: 'last_name',
   email: 'email',
@@ -40,6 +61,9 @@ const EMPLOYEE_UPDATE_COLUMNS = {
   hireDate: 'hire_date',
   employmentStatus: 'employment_status',
 };
+
+const EMPLOYEE_NUMBER_LOCK_NAME = 'sms.employee-number-sequence';
+const EMPLOYEE_NUMBER_LOCK_TIMEOUT_SECONDS = 10;
 
 function normalizeEmployee(row) {
   if (!row) {
@@ -58,6 +82,16 @@ function normalizeEmployee(row) {
     employmentStatus: row.employmentStatus,
     createdAt: toIsoString(row.createdAt),
     updatedAt: toIsoString(row.updatedAt),
+  };
+}
+
+function normalizeEmployeeListItem(row) {
+  const employee = normalizeEmployee(row);
+  if (!employee) return null;
+  return {
+    ...employee,
+    primaryBranchName: row.primaryBranchName ?? null,
+    primaryJobTitle: row.primaryJobTitle ?? null,
   };
 }
 
@@ -108,11 +142,32 @@ function assignmentAuditSnapshot(assignment) {
   };
 }
 
-async function withTransaction(work) {
+async function withTransaction(work, { namedLock = null } = {}) {
   const connection = await pool.getConnection();
+  let namedLockAcquired = false;
+  let connectionDestroyed = false;
 
   try {
     await connection.beginTransaction();
+
+    if (namedLock) {
+      const [lockRows] = await connection.execute(
+        'SELECT GET_LOCK(?, ?) AS lockAcquired',
+        [namedLock, EMPLOYEE_NUMBER_LOCK_TIMEOUT_SECONDS],
+      );
+
+      if (
+        lockRows[0].lockAcquired !== 1 &&
+        lockRows[0].lockAcquired !== '1'
+      ) {
+        const error = new Error('Employee number sequence lock was not acquired.');
+        error.code = 'EMPLOYEE_NUMBER_SEQUENCE_BUSY';
+        throw error;
+      }
+
+      namedLockAcquired = true;
+    }
+
     const result = await work(connection);
     await connection.commit();
     return result;
@@ -125,8 +180,53 @@ async function withTransaction(work) {
 
     throw error;
   } finally {
-    connection.release();
+    if (namedLockAcquired) {
+      try {
+        const [releaseRows] = await connection.execute(
+          'SELECT RELEASE_LOCK(?) AS lockReleased',
+          [namedLock],
+        );
+
+        if (
+          releaseRows[0].lockReleased !== 1 &&
+          releaseRows[0].lockReleased !== '1'
+        ) {
+          connection.destroy();
+          connectionDestroyed = true;
+        }
+      } catch {
+        connection.destroy();
+        connectionDestroyed = true;
+      }
+    }
+
+    if (!connectionDestroyed) {
+      connection.release();
+    }
   }
+}
+
+function formatEmployeeNumber(sequence) {
+  if (typeof sequence !== 'bigint' || sequence < 1n) {
+    throw new Error('Employee number sequence must be a positive bigint.');
+  }
+
+  return `EMP-${sequence.toString().padStart(3, '0')}`;
+}
+
+async function getNextEmployeeNumber(connection) {
+  const [rows] = await connection.execute(
+    `SELECT CAST(
+       COALESCE(
+         MAX(CAST(SUBSTRING(employee_number, 5) AS DECIMAL(28, 0))),
+         0
+       ) AS CHAR
+     ) AS maximumSequence
+     FROM employees
+     WHERE REGEXP_LIKE(employee_number, '^EMP-[0-9]+$', 'c')`,
+  );
+
+  return formatEmployeeNumber(BigInt(rows[0].maximumSequence) + 1n);
 }
 
 async function getLastInsertId(connection) {
@@ -233,8 +333,9 @@ async function listEmployees({
     values,
   );
   const [rows] = await pool.execute(
-    `SELECT ${EMPLOYEE_COLUMNS}
+    `SELECT ${EMPLOYEE_LIST_COLUMNS}
      FROM employees e
+     ${EMPLOYEE_LIST_JOINS}
      ${whereClause}
      ORDER BY e.last_name, e.first_name, e.employee_id
      LIMIT ? OFFSET ?`,
@@ -242,7 +343,7 @@ async function listEmployees({
   );
 
   return {
-    items: rows.map(normalizeEmployee),
+    items: rows.map(normalizeEmployeeListItem),
     totalItems: countRows[0].totalItems,
   };
 }
@@ -270,6 +371,8 @@ async function findAssignmentsByEmployeeId(employeeId) {
 
 async function createEmployeeRecord(input, auditContext) {
   return withTransaction(async (connection) => {
+    const employeeNumber = await getNextEmployeeNumber(connection);
+
     await connection.execute(
       `INSERT INTO employees (
          employee_number,
@@ -281,7 +384,7 @@ async function createEmployeeRecord(input, auditContext) {
          employment_status
        ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
-        input.employeeNumber,
+        employeeNumber,
         input.firstName,
         input.lastName,
         input.email,
@@ -304,7 +407,7 @@ async function createEmployeeRecord(input, auditContext) {
     });
 
     return employee;
-  });
+  }, { namedLock: EMPLOYEE_NUMBER_LOCK_NAME });
 }
 
 async function updateEmployeeRecord(employeeId, update, auditContext) {
@@ -581,7 +684,17 @@ async function createAssignmentRecord(employeeId, input, auditContext) {
 
     const currentDate = await selectCurrentDate(connection);
 
-    if (input.isPrimary && input.startedOn > currentDate) {
+    const [activeAssignmentRows] = await connection.execute(
+      `SELECT assignment_id
+       FROM employee_branch_assignments
+       WHERE employee_id = ? AND ended_on IS NULL
+       FOR UPDATE`,
+      [employeeId],
+    );
+    const effectiveIsPrimary =
+      activeAssignmentRows.length === 0 || input.isPrimary;
+
+    if (effectiveIsPrimary && input.startedOn > currentDate) {
       return { outcome: 'future_primary_assignment' };
     }
 
@@ -602,7 +715,7 @@ async function createAssignmentRecord(employeeId, input, auditContext) {
 
     let previousPrimary = null;
 
-    if (input.isPrimary) {
+    if (effectiveIsPrimary) {
       const [primaryRows] = await connection.execute(
         `SELECT ${ASSIGNMENT_COLUMNS}
          FROM employee_branch_assignments eba
@@ -638,7 +751,7 @@ async function createAssignmentRecord(employeeId, input, auditContext) {
         input.branchId,
         input.jobTitle,
         input.startedOn,
-        input.isPrimary ? 1 : 0,
+        effectiveIsPrimary ? 1 : 0,
       ],
     );
     const assignmentId = await getLastInsertId(connection);
@@ -659,7 +772,7 @@ async function createAssignmentRecord(employeeId, input, auditContext) {
       notes: 'Employee assigned to a branch through the administration API.',
     });
 
-    if (input.isPrimary) {
+    if (effectiveIsPrimary) {
       await insertAuditLog(connection, {
         auditContext,
         branchId: input.branchId,
@@ -857,6 +970,7 @@ export {
   endAssignmentRecord,
   findAssignmentsByEmployeeId,
   findEmployeeById,
+  formatEmployeeNumber,
   listEmployees,
   makeAssignmentPrimaryRecord,
   terminateEmployeeRecord,

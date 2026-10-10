@@ -7,7 +7,6 @@ import {
   parseEmail,
   parseEnum,
   parseId,
-  parseOptionalString,
   parsePagination,
   parseSearch,
   parseString,
@@ -15,7 +14,6 @@ import {
 } from './common.validator.js';
 
 const EMPLOYEE_FIELDS = [
-  'employeeNumber',
   'firstName',
   'lastName',
   'email',
@@ -29,12 +27,6 @@ const ALL_EMPLOYMENT_STATUSES = [
   ...EDITABLE_EMPLOYMENT_STATUSES,
   'TERMINATED',
 ];
-
-function parseEmployeeNumber(value) {
-  return parseString(value, 'employeeNumber', 32, {
-    normalize: (input) => input.toUpperCase(),
-  });
-}
 
 function parseEmploymentStatus(value) {
   if (value === 'TERMINATED') {
@@ -94,17 +86,13 @@ function validateCreateEmployeeInput(body) {
   assertAllowedKeys(body, EMPLOYEE_FIELDS);
 
   return {
-    employeeNumber: parseEmployeeNumber(body.employeeNumber),
     firstName: parseString(body.firstName, 'firstName', 100),
     lastName: parseString(body.lastName, 'lastName', 100),
     email:
       body.email === undefined
         ? null
         : parseEmail(body.email, 'email', { nullable: true }),
-    phone:
-      body.phone === undefined
-        ? null
-        : parseOptionalString(body.phone, 'phone', 30),
+    phone: parseString(body.phone, 'phone', 30),
     hireDate: parseDate(body.hireDate, 'hireDate'),
     employmentStatus:
       body.employmentStatus === undefined
@@ -120,10 +108,6 @@ function validateUpdateEmployeeInput(body) {
 
   const update = {};
 
-  if (Object.hasOwn(body, 'employeeNumber')) {
-    update.employeeNumber = parseEmployeeNumber(body.employeeNumber);
-  }
-
   if (Object.hasOwn(body, 'firstName')) {
     update.firstName = parseString(body.firstName, 'firstName', 100);
   }
@@ -137,7 +121,7 @@ function validateUpdateEmployeeInput(body) {
   }
 
   if (Object.hasOwn(body, 'phone')) {
-    update.phone = parseOptionalString(body.phone, 'phone', 30);
+    update.phone = parseString(body.phone, 'phone', 30);
   }
 
   if (Object.hasOwn(body, 'hireDate')) {

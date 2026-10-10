@@ -53,9 +53,16 @@ async function createEmployee(input, auditContext) {
   try {
     return await createEmployeeRecord(input, auditContext);
   } catch (error) {
+    if (error.code === 'EMPLOYEE_NUMBER_SEQUENCE_BUSY') {
+      throw new HttpError(
+        503,
+        'Employee number generation is temporarily unavailable; try again',
+      );
+    }
+
     rethrowDuplicateAsConflict(
       error,
-      'An employee with that employee number or email already exists',
+      'An employee with that email already exists',
     );
   }
 }
@@ -68,7 +75,7 @@ async function updateEmployee(employeeId, update, auditContext) {
   } catch (error) {
     rethrowDuplicateAsConflict(
       error,
-      'An employee with that employee number or email already exists',
+      'An employee with that email already exists',
     );
   }
 
