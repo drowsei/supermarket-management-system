@@ -11,6 +11,7 @@ export function openTillSelector(branchId) {
     valueKey: 'tillSessionId',
     label: (item) => `${item.sessionNumber} · Opened ${displayDate(item.openedAt)} · Register ${item.posRegisterId} · Cashier ${item.cashierEmployeeId}`,
     query: { status: 'OPEN' },
+    limit: 100,
     searchable: false,
     filter: eligibleOpenTillSessions,
     emptyMessage: 'No open till session is available for this branch.',

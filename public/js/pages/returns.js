@@ -11,6 +11,7 @@ export function completedReturnSelector(branchId, saleId) {
     valueKey: 'salesReturnId',
     label: (item) => `${item.returnNumber} · ${item.currencyCode ?? ''} ${item.refundTotalAmount} · ${String(item.status).replaceAll('_', ' ')}`.trim(),
     query: { status: 'COMPLETED' },
+    limit: 100,
     searchable: false,
     emptyMessage: 'This sale has no completed return available for refund.',
   }, true);

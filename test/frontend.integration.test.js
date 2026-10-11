@@ -562,7 +562,7 @@ test('cancelled and failed end-assignment workflows cannot leak stale employee s
   const action = employeeConfig.actions.find((item) => item.label === 'End assignment');
   const resourcePage = await read('public/js/components/resourcePage.js');
   assert.equal(action.refreshOnFailure, true);
-  assert.match(resourcePage, /if \(action\.refreshOnFailure\) await load\(\)/);
+  assert.match(resourcePage, /if \(shouldRefreshAfterActionFailure\(action, failure\)\) await load\(\)/);
   assert.match(resourcePage, /closeModal\(\);[\s\S]*?await load\(\);/);
 });
 
@@ -719,7 +719,7 @@ test('make primary cancel, reopen, and failure paths do not reuse stale assignme
   assert.equal(action.resetOnFailure, true);
   const resourcePage = await read('public/js/components/resourcePage.js');
   assert.match(resourcePage, /if \(action\.resetOnFailure\)[\s\S]*?closeModal\(\);[\s\S]*?toast\(failure\.message, 'error'\)/);
-  assert.match(resourcePage, /if \(action\.refreshOnFailure\) await load\(\)/);
+  assert.match(resourcePage, /if \(shouldRefreshAfterActionFailure\(action, failure\)\) await load\(\)/);
   const helpers = await read('public/js/employeeAssignments.js');
   assert.doesNotMatch(helpers, /(?:Number|parseInt|parseFloat)\([^\n]*(?:employeeId|assignmentId)/);
 });
@@ -977,7 +977,7 @@ test('product workspaces use readable product and variant selectors with exact I
 
   const variantDefinition = variantWorkspaceSelector(productId);
   const variant = selectorOption({
-    variantId,
+    productVariantId: variantId,
     variantName: 'Peak Milk 400g',
     sku: 'PEAK-400G-TIN',
   }, variantDefinition.remote);
@@ -986,6 +986,7 @@ test('product workspaces use readable product and variant selectors with exact I
     '/api/admin/catalog/products/18446744073709551615/variants',
   );
   assert.equal(variantDefinition.name, 'variantId');
+  assert.equal(variantDefinition.remote.valueKey, 'productVariantId');
   assert.equal(variant.value, variantId);
   assert.equal(variant.label, 'Peak Milk 400g · PEAK-400G-TIN');
 

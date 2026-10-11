@@ -185,7 +185,7 @@ export function permissionDomain(code) {
   if (prefix === 'reports') return 'Reporting';
   return 'Other';
 }
-export const permissionConfig = { key: 'permissions', title: 'Permission catalog', singular: 'permission', description: 'Review access capabilities grouped by business area. Permission codes remain visible for administration.', listPath: '/api/admin/permissions', detailPath: '/api/admin/permissions', readPermission: 'permissions.read', managePermission: 'permissions.read', create: false, update: false, groupBy: (item) => permissionDomain(item.permissionCode), columns: [{ key: 'permissionCode', label: 'Code' }, { key: 'permissionName', label: 'Permission' }, { key: 'description' }] };
+export const permissionConfig = { key: 'permissions', title: 'Permission catalog', singular: 'permission', description: 'Review access capabilities grouped by business area. Permission codes remain visible for administration.', listPath: '/api/admin/permissions', detailPath: false, readPermission: 'permissions.read', managePermission: 'permissions.read', create: false, update: false, groupBy: (item) => permissionDomain(item.permissionCode), columns: [{ key: 'permissionCode', label: 'Code' }, { key: 'permissionName', label: 'Permission' }, { key: 'description' }] };
 
 export const catalogConfigs = [
   { key: 'units', title: 'Units of measure', singular: 'unit', listPath: '/api/admin/catalog/units', detailPath: ({ item }) => `/api/admin/catalog/units/${item.unitOfMeasureId}`, readPermission: 'catalog.read', managePermission: 'catalog.manage', columns: [{ key: 'unitCode' }, { key: 'unitName' }, { key: 'symbol' }, { key: 'allowsFraction' }], createFields: [text('unitCode', 'Unit code', true), text('unitName', 'Unit name', true), text('symbol', 'Symbol', true), checkbox('allowsFraction', 'Allows fractional quantities')] },
@@ -198,7 +198,7 @@ for (const config of catalogConfigs) { config.description = `Manage ${config.tit
 export const productConfig = { key: 'products', title: 'Products', singular: 'product', description: 'Maintain the product catalog without changing branch stock.', listPath: '/api/admin/catalog/products', detailPath: ({ item }) => `/api/admin/catalog/products/${item.productId}`, readPermission: 'products.read', managePermission: 'products.manage', columns: [{ key: 'productCode' }, { key: 'productName' }, { key: 'categoryName', label: 'Category' }, { key: 'brandName', label: 'Brand' }, { key: 'status', status: true }], filters: [{ name: 'status', label: 'Status', options: productStatus }], createFields: [categoryChoice, brandChoice, taxRateChoice, text('productCode', 'Product code', true), text('productName', 'Product name', true), notes('description', 'Description'), status(productStatus)], emptyState: { title: 'No products yet', message: 'Create reference catalog data, then add your first product.' } };
 productConfig.updateFields = productConfig.createFields;
 
-export const variantConfig = { key: 'variants', title: 'Product variants', singular: 'variant', description: 'Maintain sellable and stockable SKUs with their base unit.', listPath: ({ context }) => `/api/admin/catalog/products/${context.productId}/variants`, detailPath: ({ item }) => `/api/admin/catalog/variants/${item.variantId}`, readPermission: 'products.read', managePermission: 'products.manage', columns: [{ key: 'sku' }, { key: 'variantName' }, { key: 'unitCode', label: 'Base unit' }, { key: 'lotTrackingMode' }, { key: 'defaultSellingPrice' }, { key: 'status', status: true }], filters: [{ name: 'status', label: 'Status', options: productStatus }], createFields: [text('unitOfMeasureId', 'Base unit ID', true), text('sku', 'SKU', true), text('variantName', 'Variant name', true), decimal('sizeValue', 'Size value', false, { nullable: true }), decimal('unitsPerPack', 'Units per pack', true, { default: '1.000' }), checkbox('isFractional', 'Fractional sale allowed'), select('lotTrackingMode', 'Lot tracking', ['NONE', 'OPTIONAL', 'REQUIRED'], true, { default: 'NONE' }), checkbox('requiresExpiryDate', 'Expiry date required'), decimal('defaultSellingPrice', 'Default selling price', true), status(productStatus, 'INACTIVE'), { name:'basePackage', label:'Base package details (JSON)', type:'textarea', full:true, help:'Required when creating an active variant.', transform:(value)=>JSON.parse(value) }] };
+export const variantConfig = { key: 'variants', title: 'Product variants', singular: 'variant', description: 'Maintain sellable and stockable SKUs with their base unit.', listPath: ({ context }) => `/api/admin/catalog/products/${context.productId}/variants`, detailPath: ({ item }) => `/api/admin/catalog/variants/${item.productVariantId}`, readPermission: 'products.read', managePermission: 'products.manage', columns: [{ key: 'sku' }, { key: 'variantName' }, { key: 'unitCode', label: 'Base unit' }, { key: 'lotTrackingMode' }, { key: 'defaultSellingPrice' }, { key: 'status', status: true }], filters: [{ name: 'status', label: 'Status', options: productStatus }], createFields: [text('unitOfMeasureId', 'Base unit ID', true), text('sku', 'SKU', true), text('variantName', 'Variant name', true), decimal('sizeValue', 'Size value', false, { nullable: true }), decimal('unitsPerPack', 'Units per pack', true, { default: '1.000' }), checkbox('isFractional', 'Fractional sale allowed'), select('lotTrackingMode', 'Lot tracking', ['NONE', 'OPTIONAL', 'REQUIRED'], true, { default: 'NONE' }), checkbox('requiresExpiryDate', 'Expiry date required'), decimal('defaultSellingPrice', 'Default selling price', true), status(productStatus, 'INACTIVE'), { name:'basePackage', label:'Base package details (JSON)', type:'textarea', full:true, help:'Required when creating an active variant.', transform:(value)=>JSON.parse(value) }] };
 variantConfig.updateFields = variantConfig.createFields.filter((field) => field.name !== 'basePackage');
 
 export const packageConfig = { key: 'packages', title: 'Variant packages', singular: 'package', description: 'Configure base-unit conversions for purchasing and selling.', listPath: ({ context }) => `/api/admin/catalog/variants/${context.variantId}/packages`, detailPath: ({ item }) => `/api/admin/catalog/packages/${item.productPackageId ?? item.packageId}`, readPermission: 'products.read', managePermission: 'products.manage', columns: [{ key: 'packageCode' }, { key: 'packageName' }, { key: 'conversionToBaseQuantity', label: 'Base conversion' }, { key: 'isPurchasable' }, { key: 'isSellable' }, { key: 'status', status: true }], createFields: [text('packageUnitOfMeasureId', 'Package unit ID', true), text('packageCode', 'Package code', true), text('packageName', 'Package name', true), decimal('conversionToBaseQuantity', 'Conversion to base quantity', true), checkbox('isBaseUnit', 'Base package'), checkbox('isPurchasable', 'Purchasable', true), checkbox('isSellable', 'Sellable', true), decimal('defaultSellingPrice', 'Default selling price', false, { nullable: true }), status(productStatus)] };
@@ -225,7 +225,7 @@ export const transactionConfig = { key: 'transactions', title: 'Inventory ledger
 export const posRegisterConfig = { key: 'pos-registers', title: 'POS registers', singular: 'register', description: 'Manage physical checkout terminals for the selected branch.', branch: true, listPath: ({ branchId }) => `${branchBase({ branchId })}/pos-registers`, detailPath: ({ branchId, item }) => `${branchBase({ branchId })}/pos-registers/${item.posRegisterId}`, readPermission: 'pos_registers.read', managePermission: 'pos_registers.manage', columns: [{ key: 'registerCode' }, { key: 'registerName' }, { key: 'terminalIdentifier' }, { key: 'status', status: true }], filters: [{ name: 'status', label: 'Status', options: ['ACTIVE', 'INACTIVE', 'MAINTENANCE'] }], createFields: [text('registerCode', 'Register code', true), text('registerName', 'Register name', true), text('terminalIdentifier', 'Terminal identifier', false, { nullable: true }), status(['ACTIVE', 'INACTIVE', 'MAINTENANCE'])], actions: [{ label: 'Open till', permission: 'till_sessions.manage', path: ({ branchId, item }) => `${branchBase({ branchId })}/pos-registers/${item.posRegisterId}/till-sessions`, fields: [text('cashierEmployeeId', 'Cashier employee ID', true), decimal('openingCashAmount', 'Opening cash amount', true), notes()], statuses: ['ACTIVE'] }] };
 posRegisterConfig.updateFields = posRegisterConfig.createFields;
 
-export const tillConfig = { key: 'tills', title: 'Till sessions', singular: 'till session', description: 'Review cashier sessions, cash movements, and drawer reconciliation.', branch: true, listPath: ({ branchId }) => `${branchBase({ branchId })}/till-sessions`, detailPath: ({ branchId, item }) => `${branchBase({ branchId })}/till-sessions/${item.tillSessionId}`, readPermission: 'till_sessions.read', managePermission: 'till_sessions.manage', create: false, update: false, notice: 'Till sessions are opened from an active register on the Registers tab.', emptyState: { title: 'No till sessions yet', message: 'Open an active register session to begin checkout.' }, columns: [{ key: 'sessionNumber', label: 'Session' }, { key: 'posRegisterId', label: 'Register' }, { key: 'cashierEmployeeId', label: 'Cashier' }, { key: 'openedAt' }, { key: 'openingCashAmount' }, { key: 'expectedClosingCashAmount' }, { key: 'status', status: true }], filters: [{ name: 'status', label: 'Status', options: ['OPEN', 'SUSPENDED', 'CLOSED', 'CANCELLED'] }], actions: [
+export const tillConfig = { key: 'tills', title: 'Till sessions', singular: 'till session', description: 'Review cashier sessions, cash movements, and drawer reconciliation.', branch: true, listPath: ({ branchId }) => `${branchBase({ branchId })}/till-sessions`, detailPath: ({ branchId, item }) => `${branchBase({ branchId })}/till-sessions/${item.tillSessionId}`, readPermission: 'till_sessions.read', managePermission: 'till_sessions.manage', create: false, update: false, search: false, notice: 'Till sessions are opened from an active register on the Registers tab.', emptyState: { title: 'No till sessions yet', message: 'Open an active register session to begin checkout.' }, columns: [{ key: 'sessionNumber', label: 'Session' }, { key: 'posRegisterId', label: 'Register' }, { key: 'cashierEmployeeId', label: 'Cashier' }, { key: 'openedAt' }, { key: 'openingCashAmount' }, { key: 'expectedClosingCashAmount' }, { key: 'status', status: true }], filters: [{ name: 'status', label: 'Status', options: ['OPEN', 'SUSPENDED', 'CLOSED', 'CANCELLED'] }], actions: [
   { label: 'Cash movement', path: ({ branchId, item }) => `${branchBase({ branchId })}/till-sessions/${item.tillSessionId}/cash-movements`, fields: [select('movementType', 'Movement type', ['CASH_IN', 'CASH_OUT', 'CASH_DROP', 'PAYOUT'], true), decimal('amount', 'Amount', true), text('reason', 'Reason', true), text('referenceNumber', 'Reference', false, { nullable: true })], statuses: ['OPEN'] },
   { label: 'Suspend', path: ({ branchId, item }) => `${branchBase({ branchId })}/till-sessions/${item.tillSessionId}/suspend`, statuses: ['OPEN'], confirm: () => 'Suspend this till session? New checkout activity will be blocked until resumed.' },
   { label: 'Resume', path: ({ branchId, item }) => `${branchBase({ branchId })}/till-sessions/${item.tillSessionId}/resume`, statuses: ['SUSPENDED'] },
@@ -261,7 +261,7 @@ export const countConfig = { key: 'counts', title: 'Physical stock counts', sing
   { label: 'Add participant', path: ({ branchId, item }) => `${branchBase({ branchId })}/stock-counts/${item.stockCountId}/participants`, statuses: ['DRAFT', 'IN_PROGRESS'], fields: [text('employeeId', 'Employee ID', true), select('participantRole', 'Role', ['COUNTER', 'SUPERVISOR', 'OBSERVER'], true)] },
   { label: 'Start', path: ({ branchId, item }) => `${branchBase({ branchId })}/stock-counts/${item.stockCountId}/start`, statuses: ['DRAFT'], confirm: () => 'Start this count? Expected quantities and inventory versions will be captured.' },
   { label: 'Complete count', path: ({ branchId, item }) => `${branchBase({ branchId })}/stock-counts/${item.stockCountId}/complete`, statuses: ['IN_PROGRESS'], confirm: () => 'Mark counting complete? Every count line must have a physical quantity.' },
-  { label: 'Post', path: ({ branchId, item }) => `${branchBase({ branchId })}/stock-counts/${item.stockCountId}/post`, statuses: ['COUNTED', 'APPROVED'], confirm: () => 'Approve and post this stock count? Stale inventory versions will be rejected.', tone: 'danger' },
+  { label: 'Post', path: ({ branchId, item }) => `${branchBase({ branchId })}/stock-counts/${item.stockCountId}/post`, statuses: ['COUNTED'], confirm: () => 'Approve and post this stock count? Stale inventory versions will be rejected.', tone: 'danger' },
   { label: 'Cancel', path: ({ branchId, item }) => `${branchBase({ branchId })}/stock-counts/${item.stockCountId}/cancel`, statuses: ['DRAFT', 'IN_PROGRESS', 'COUNTED', 'APPROVED'], confirm: () => 'Cancel this stock count?', tone: 'danger' },
 ] };
 countConfig.updateFields = countConfig.createFields;
@@ -410,5 +410,70 @@ markPathOnly(saleConfig,'Update item',['saleItemId']);
 markPathOnly(saleConfig,'Delete item',['saleItemId']);
 markPathOnly(returnConfig,'Update returned item',['salesReturnItemId']);
 markPathOnly(returnConfig,'Delete returned item',['salesReturnItemId']);
+
+for (const [config, key] of [
+  [branchConfig, 'branch'],
+  [employeeConfig, 'employee'],
+  [userConfig, 'user'],
+  [roleConfig, 'role'],
+  [productConfig, 'product'],
+  [variantConfig, 'productVariant'],
+  [packageConfig, 'productPackage'],
+  [barcodeConfig, 'productBarcode'],
+  [customerConfig, 'customer'],
+  [supplierConfig, 'supplier'],
+  [supplierProductConfig, 'supplierProduct'],
+  [supplierPackageConfig, 'supplierProductPackage'],
+  [variantPriceConfig, 'branchVariantPrice'],
+  [packagePriceConfig, 'branchPackagePrice'],
+  [posRegisterConfig, 'posRegister'],
+  [paymentMethodConfig, 'paymentMethod'],
+  [saleConfig, 'sale'],
+  [returnConfig, 'salesReturn'],
+  [salePaymentConfig, 'payment'],
+]) {
+  config.detailKey = key;
+  config.editKey = key;
+}
+for (const [config, key] of [
+  [inventoryConfig, 'branchInventory'],
+  [purchaseOrderConfig, 'purchaseOrder'],
+  [goodsReceiptConfig, 'goodsReceipt'],
+  [adjustmentConfig, 'adjustment'],
+  [countConfig, 'stockCount'],
+  [transferConfig, 'stockTransfer'],
+]) {
+  config.detailKey = false;
+  config.editKey = key;
+}
+for (const [config, key] of [
+  [catalogConfigs.find((entry) => entry.key === 'units'), 'unit'],
+  [catalogConfigs.find((entry) => entry.key === 'categories'), 'category'],
+  [catalogConfigs.find((entry) => entry.key === 'brands'), 'brand'],
+  [catalogConfigs.find((entry) => entry.key === 'tax-rates'), 'taxRate'],
+]) {
+  config.detailKey = key;
+  config.editKey = key;
+}
+
+employeeConfig.updateStatusKey = 'employmentStatus';
+employeeConfig.updateStatuses = ['ACTIVE', 'ON_LEAVE'];
+purchaseOrderConfig.updateStatuses = ['DRAFT'];
+goodsReceiptConfig.updateStatuses = ['DRAFT'];
+adjustmentConfig.updateStatuses = ['DRAFT'];
+countConfig.updateStatuses = ['DRAFT'];
+transferConfig.updateStatuses = ['DRAFT'];
+saleConfig.updateStatuses = ['OPEN'];
+
+const selectedBranchIsTransferSource = ({ item, branchId }) =>
+  String(item.sourceBranchId) === String(branchId);
+const selectedBranchIsTransferDestination = ({ item, branchId }) =>
+  String(item.destinationBranchId) === String(branchId);
+transferConfig.updateVisible = selectedBranchIsTransferSource;
+for (const action of transferConfig.actions) {
+  action.visible = action.label === 'Receive'
+    ? selectedBranchIsTransferDestination
+    : selectedBranchIsTransferSource;
+}
 
 export { active, branchBase, checkbox, decimal, notes, select, status, text };

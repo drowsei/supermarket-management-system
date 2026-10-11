@@ -16,7 +16,7 @@ export function productWorkspaceSelector() {
 export function variantWorkspaceSelector(productId) {
   return remoteSelect('variantId', 'Product variant', {
     path: `/api/admin/catalog/products/${encodeURIComponent(String(productId))}/variants`,
-    valueKey: 'variantId',
+    valueKey: 'productVariantId',
     label: (item) => `${item.variantName} · ${item.sku}`,
     searchPlaceholder: 'Search variants by name or SKU',
     emptyMessage: 'This product has no variants. Create a variant before configuring packages or barcodes.',

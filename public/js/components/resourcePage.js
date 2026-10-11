@@ -47,8 +47,17 @@ export async function renderResourcePage(root, config, context = {}) {
       ));
       const rowActions = [
         { label: 'View', onSelect: (item) => showDetail(item) },
-        ...(manage && config.update !== false ? [{ label: 'Edit', onSelect: (item) => showForm('update', item) }] : []),
-        ...configuredActions.map((action) => ({ label: action.label, className: action.tone === 'danger' ? 'button button-quiet danger-text button-small' : undefined, show: (item) => !action.statuses || action.statuses.includes(item[action.statusKey ?? 'status']), onSelect: (item, button) => runAction(action, item, button) })),
+        ...(manage && config.update !== false ? [{
+          label: 'Edit',
+          show: (item) => resourceUpdateAllowed(config, item, branchId, context),
+          onSelect: (item) => showForm('update', item),
+        }] : []),
+        ...configuredActions.map((action) => ({
+          label: action.label,
+          className: action.tone === 'danger' ? 'button button-quiet danger-text button-small' : undefined,
+          show: (item) => resourceActionVisible(action, item, branchId, context),
+          onSelect: (item, button) => runAction(action, item, button),
+        })),
       ];
       content.replaceChildren(dataTable({ caption: config.tableCaption ?? config.title, columns: config.columns, items, actions: rowActions, groupBy: config.groupBy }));
       if (data.pagination) content.append(paginationView(data.pagination, (value) => { state.page = value; load(); }));
@@ -58,11 +67,36 @@ export async function renderResourcePage(root, config, context = {}) {
   async function showDetail(item) {
     const holder = loadingState('Loading details…'); openModal({ title: config.singular, content: holder, size: 'large' });
     if (config.detailPath === false) { renderDetail(holder, item); return; }
-    try { const response = await api.get(resolve(config.detailPath, branchId, item, context)); renderDetail(holder, response.data ?? item); } catch (failure) { holder.replaceWith(errorState(failure.message)); }
+    try {
+      const response = await api.get(resolve(config.detailPath, branchId, item, context));
+      renderDetail(holder, extractResourceRecord(response.data, config.detailKey));
+    } catch (failure) { holder.replaceWith(errorState(failure.message)); }
   }
-  function showForm(mode, item = {}) {
+  async function showForm(mode, item = {}) {
+    if (mode === 'update' && config.detailPath !== false) {
+      const holder = loadingState(`Loading current ${config.singular}…`);
+      openModal({
+        title: `Edit ${config.singular}`,
+        description: config.formDescription ?? '',
+        content: holder,
+        size: ((config.updateFields ?? config.createFields) ?? []).length > 8 ? 'large' : 'medium',
+      });
+      try {
+        const response = await api.get(resolve(config.detailPath, branchId, item, context));
+        mountForm(mode, item, extractResourceRecord(
+          response.data,
+          config.editKey ?? config.detailKey,
+        ), holder);
+      } catch (failure) {
+        holder.replaceWith(errorState(failure.message));
+      }
+      return;
+    }
+    mountForm(mode, item, item);
+  }
+  function mountForm(mode, item, initial, holder = null) {
     const definitions = (mode === 'create' ? config.createFields : config.updateFields ?? config.createFields) ?? [];
-    const built = buildForm(definitions, item, { submitLabel: mode === 'create' ? 'Create' : 'Save changes', onCancel: closeModal, context: { ...context, branchId: String(branchId ?? ''), branch } });
+    const built = buildForm(definitions, initial, { submitLabel: mode === 'create' ? 'Create' : 'Save changes', onCancel: closeModal, context: { ...context, branchId: String(branchId ?? ''), branch } });
     built.form.addEventListener('submit', (event) => {
       event.preventDefault();
       withSubmitLock(built.submit, async () => {
@@ -89,7 +123,8 @@ export async function renderResourcePage(root, config, context = {}) {
         }
       });
     });
-    openModal({ title: `${mode === 'create' ? 'New' : 'Edit'} ${config.singular}`, description: config.formDescription ?? '', content: built.form, size: definitions.length > 8 ? 'large' : 'medium' });
+    if (holder) holder.replaceWith(built.form);
+    else openModal({ title: `${mode === 'create' ? 'New' : 'Edit'} ${config.singular}`, description: config.formDescription ?? '', content: built.form, size: definitions.length > 8 ? 'large' : 'medium' });
   }
   async function runAction(action, item, button) {
     let body = {};
@@ -119,7 +154,7 @@ export async function renderResourcePage(root, config, context = {}) {
       return;
     }
     if (action.confirm && !(await confirmAction({ title: action.confirmTitle ?? action.label, message: action.confirm(item), confirmLabel: action.label, tone: action.tone ?? 'primary' }))) return;
-    await withSubmitLock(button, async () => { try { const response = await api[action.method ?? 'post'](resolve(action.path, branchId, item, context), body); if (action.displayResponse) { const holder = element('div'); renderDetail(holder, response.data); openModal({ title: action.responseTitle ?? action.label, content: holder, size: 'large' }); } else { toast(action.successMessage ?? `${action.label} completed.`); await load(); } } catch (failure) { toast(failure.message, 'error'); } });
+    await withSubmitLock(button, async () => { try { const response = await api[action.method ?? 'post'](resolve(action.path, branchId, item, context), body); if (action.displayResponse) { const holder = element('div'); renderDetail(holder, response.data); openModal({ title: action.responseTitle ?? action.label, content: holder, size: 'large' }); } else { toast(action.successMessage ?? `${action.label} completed.`); await load(); } } catch (failure) { toast(failure.message, 'error'); if (shouldRefreshAfterActionFailure(action, failure)) await load(); } });
   }
   function showActionForm(action, item, prepared = null) {
     const actionContext = { ...context, branchId: String(branchId ?? ''), branch, item, prepared };
@@ -154,7 +189,7 @@ export async function renderResourcePage(root, config, context = {}) {
       } else {
         showFailure(failure);
       }
-      if (action.refreshOnFailure) await load();
+      if (shouldRefreshAfterActionFailure(action, failure)) await load();
     };
     const execute = (workflow) => workflow.confirm(async (requestBody, pathValues) => {
       const path = resolve(action.path, branchId, item, { ...context, body: pathValues });
@@ -233,6 +268,30 @@ export function resourceActionAllowed(action, config, authorization, branchId = 
     action.permission ?? config.managePermission,
     config.branch ? branchId : null,
   );
+}
+
+export function resourceActionVisible(action, item, branchId = null, context = {}) {
+  if (action.statuses && !action.statuses.includes(item[action.statusKey ?? 'status'])) return false;
+  return action.visible ? Boolean(action.visible({ item, branchId: String(branchId ?? ''), context })) : true;
+}
+
+export function resourceUpdateAllowed(config, item, branchId = null, context = {}) {
+  if (config.updateStatuses && !config.updateStatuses.includes(item[config.updateStatusKey ?? 'status'])) return false;
+  return config.updateVisible
+    ? Boolean(config.updateVisible({ item, branchId: String(branchId ?? ''), context }))
+    : true;
+}
+
+export function extractResourceRecord(data, key = false) {
+  if (key === false) return data;
+  if (!data || typeof data !== 'object' || !Object.hasOwn(data, key) || !data[key]) {
+    throw new Error(`The server response did not include the expected ${key} record.`);
+  }
+  return data[key];
+}
+
+export function shouldRefreshAfterActionFailure(action, failure) {
+  return action.refreshOnFailure === true || [404, 409].includes(failure?.status);
 }
 
 function resourceEmptyState(config, state, manage) {
