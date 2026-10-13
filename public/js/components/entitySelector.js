@@ -58,9 +58,21 @@ export function buildEntitySelector(definition, current, context = {}) {
     className: 'muted selector-status',
     attributes: { id: `${id}-status`, role: 'status', 'aria-live': 'polite' },
   });
+  const more = element('button', {
+    className: 'button button-secondary button-small',
+    text: 'Load more',
+    attributes: { type: 'button' },
+  });
+  const showMore = (visible) => {
+    more.hidden = !visible;
+    // The shared button display rule needs the existing hidden utility as well.
+    if (visible) more.classList.remove('hidden');
+    else more.classList.add('hidden');
+  };
+  showMore(false);
   wrapper.append(element('label', { text: labelText, attributes: { for: id } }));
   if (search) wrapper.append(search);
-  wrapper.append(select, status);
+  wrapper.append(select, status, more);
   if (definition.help) wrapper.append(element('small', {
     className: 'muted',
     text: typeof definition.help === 'function' ? definition.help(context) : definition.help,
@@ -71,6 +83,10 @@ export function buildEntitySelector(definition, current, context = {}) {
   let controller = null;
   let requestVersion = 0;
   let timer = null;
+  let loadedItems = [];
+  let loadedPage = 0;
+  let searchTerm = '';
+  let hasMore = false;
 
   const optionFor = (item) => selectorOption(item, definition.remote);
   const reportAvailability = (available) => {
@@ -109,10 +125,10 @@ export function buildEntitySelector(definition, current, context = {}) {
       }));
       select.value = selectedId;
     }
-    const available = options.filter((option) => option.value !== selectedOption?.value).length;
     status.textContent = options.length
-      ? `${available || options.length} option${(available || options.length) === 1 ? '' : 's'} available.`
+      ? `${options.length} option${options.length === 1 ? '' : 's'} available.${hasMore ? ' More results are available.' : ''}`
       : (definition.remote.emptyMessage ?? `No ${definition.label.toLowerCase()} are available.`);
+    if (!options.length && hasMore) status.textContent += ' More results are available.';
     select.disabled = options.length === 0;
     reportAvailability(options.length > 0);
   }
@@ -130,11 +146,15 @@ export function buildEntitySelector(definition, current, context = {}) {
     }
   }
 
-  async function load(searchTerm = '') {
+  async function load(term = '', append = false) {
     controller?.abort();
     controller = new AbortController();
     const version = ++requestVersion;
+    const page = append ? loadedPage + 1 : 1;
+    searchTerm = term;
     select.disabled = true;
+    more.disabled = true;
+    if (!append) showMore(false);
     reportAvailability(false);
     status.textContent = `Loading ${definition.label.toLowerCase()}…`;
     try {
@@ -142,22 +162,39 @@ export function buildEntitySelector(definition, current, context = {}) {
         ...(typeof definition.remote.query === 'function'
           ? definition.remote.query(context)
           : definition.remote.query ?? {}),
-        page: 1,
+        page,
         limit: definition.remote.limit ?? SELECTOR_LIMIT,
       };
-      if (definition.remote.searchable !== false && searchTerm) query.search = searchTerm;
+      if (definition.remote.searchable !== false && term) query.search = term;
       const response = await api.get(
         `${resolve(definition.remote.path, context)}${buildQuery(query)}`,
         { signal: controller.signal },
       );
       if (version !== requestVersion) return;
       const items = Array.isArray(response.data) ? response.data : response.data?.items ?? [];
-      showOptions(items);
+      // Keep requests bounded and let the user reach records beyond the first page.
+      loadedItems = [...new Map([
+        ...(append ? loadedItems : []),
+        ...items,
+      ].map((item) => [exactSelectorId(item?.[definition.remote.valueKey]), item])).values()];
+      loadedPage = page;
+      hasMore = page < (response.data?.pagination?.totalPages ?? page);
+      showMore(hasMore);
+      more.disabled = false;
+      more.textContent = 'Load more';
+      showOptions(loadedItems);
     } catch (failure) {
       if (failure.name === 'AbortError' || version !== requestVersion) return;
-      select.replaceChildren();
-      select.disabled = true;
-      reportAvailability(false);
+      if (append) {
+        showOptions(loadedItems);
+        showMore(true);
+        more.disabled = false;
+        more.textContent = 'Retry loading more';
+      } else {
+        select.replaceChildren();
+        select.disabled = true;
+        reportAvailability(false);
+      }
       status.textContent = failure.status === 403
         ? (definition.remote.unauthorizedMessage ?? `You do not have access to list ${definition.label.toLowerCase()}.`)
         : `Unable to load ${definition.label.toLowerCase()}. ${failure.message}`;
@@ -172,9 +209,20 @@ export function buildEntitySelector(definition, current, context = {}) {
   });
   search?.addEventListener('input', () => {
     clearTimeout(timer);
+    // Invalidate immediately: the prior page may finish during the debounce delay.
+    controller?.abort();
+    requestVersion += 1;
+    showMore(false);
+    select.disabled = true;
+    reportAvailability(false);
     timer = setTimeout(() => load(search.value.trim()), SEARCH_DELAY_MS);
   });
-  Promise.resolve(loadSelected()).then(() => load());
+  more.addEventListener('click', () => load(searchTerm, true));
+  const initialVersion = requestVersion;
+  Promise.resolve(loadSelected()).then(() => {
+    if (requestVersion === initialVersion) return load();
+    return undefined;
+  });
   return wrapper;
 }
 

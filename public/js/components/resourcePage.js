@@ -118,8 +118,14 @@ export async function renderResourcePage(root, config, context = {}) {
             : true;
           if (shouldReload !== false) await load();
         } catch (failure) {
-          built.error.textContent = failure.message;
-          built.error.classList.remove('hidden');
+          if (mode === 'update' && isStaleResourceFailure(failure)) {
+            closeModal();
+            toast(failure.message, 'error');
+            await load();
+          } else {
+            built.error.textContent = failure.message;
+            built.error.classList.remove('hidden');
+          }
         }
       });
     });
@@ -184,6 +190,9 @@ export async function renderResourcePage(root, config, context = {}) {
     };
     const handleFailure = async (failure) => {
       if (action.resetOnFailure) {
+        closeModal();
+        toast(failure.message, 'error');
+      } else if (isStaleResourceFailure(failure)) {
         closeModal();
         toast(failure.message, 'error');
       } else {
@@ -291,7 +300,11 @@ export function extractResourceRecord(data, key = false) {
 }
 
 export function shouldRefreshAfterActionFailure(action, failure) {
-  return action.refreshOnFailure === true || [404, 409].includes(failure?.status);
+  return action.refreshOnFailure === true || isStaleResourceFailure(failure);
+}
+
+function isStaleResourceFailure(failure) {
+  return [404, 409].includes(failure?.status);
 }
 
 function resourceEmptyState(config, state, manage) {

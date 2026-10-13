@@ -57,6 +57,43 @@ function browserBranchStore() {
   return createBranchStore(sessionStorage);
 }
 
+async function loadBranchCatalog(request, generation) {
+  const branches = new Map();
+  let lastPage = null;
+  for (let page = 1; lastPage === null || page <= lastPage; page += 1) {
+    const response = await request.get(`/api/admin/branches?limit=100${page > 1 ? `&page=${page}` : ''}`);
+    if (!isCurrentGeneration(generation)) return null;
+    const items = response.data?.items;
+    const pagination = response.data?.pagination;
+    if (!Array.isArray(items) || items.length > 100) {
+      throw new Error('Unable to load the complete branch list. Please refresh.');
+    }
+    if (pagination) {
+      if (!Number.isSafeInteger(pagination.totalPages) || pagination.totalPages < 0
+        || pagination.page !== page
+        || (lastPage !== null && pagination.totalPages !== lastPage)
+        || (pagination.totalPages === 0 && items.length > 0)) {
+        throw new Error('The branch list changed or its pagination is invalid. Please refresh.');
+      }
+      lastPage = pagination.totalPages;
+    } else if (page === 1 && items.length < 100) {
+      lastPage = 1;
+    } else {
+      throw new Error('Unable to load the complete branch list. Please refresh.');
+    }
+    const previousSize = branches.size;
+    for (const item of items) {
+      const branch = normalizeBranchMetadata(item);
+      if (!branch.branchId) throw new Error('The branch list contains an invalid record. Please refresh.');
+      branches.set(branch.branchId, branch);
+    }
+    if ((page > 1 || page < lastPage) && branches.size === previousSize) {
+      throw new Error('The branch list did not advance. Please refresh.');
+    }
+  }
+  return [...branches.values()];
+}
+
 export function rememberBranch(branchId) {
   const value = branchId === null || branchId === undefined || branchId === ''
     ? null
@@ -90,11 +127,9 @@ export async function loadAccessibleBranches({
   const generation = nextRequestGeneration();
   let branches = [];
   if (hasPermission(session.authorization, 'branches.read')) {
-    try {
-      const response = await request.get('/api/admin/branches?limit=100');
-      branches = (response.data.items ?? []).map(normalizeBranchMetadata);
-    } catch {
-      branches = [];
+    branches = await loadBranchCatalog(request, generation);
+    if (branches === null) {
+      return { branches: getState().branches, selectedBranchId: getState().selectedBranchId, stale: true };
     }
   }
 

@@ -26,7 +26,7 @@ import { renderReports } from './pages/reports.js';
 import { branchDisplayName } from './branchContext.js';
 
 const root = document.querySelector('#app'); let sessionMessage = ''; let sidebarCollapsed = false;
-const routeHistory = createInAppRouteHistory();
+const routeHistory = createInAppRouteHistory('#/dashboard', window);
 const renderers = { dashboard:renderDashboard, branches:renderBranches, employees:renderEmployees, users:renderUsers, roles:renderRoles, catalog:renderCatalog, products:renderProducts, pricing:renderPricing, suppliers:renderSuppliers, purchasing:renderPurchasing, inventory:renderInventory, 'inventory-operations':renderInventoryOperations, customers:renderCustomers, pos:renderPos, sales:renderSales, returns:renderReturns, reports:renderReports, profile:renderProfile };
 window.addEventListener('session-expired', () => { sessionMessage='Your session expired. Please sign in again.'; location.hash='#/login'; });
 window.addEventListener('hashchange', renderRoute);
@@ -63,8 +63,8 @@ function renderShell(activeRoute) {
   }
   sidebar.append(nav);
   const column=element('div',{className:'app-column'});const topbar=element('header',{className:'topbar'});const backdrop=element('button',{className:'sidebar-backdrop',attributes:{type:'button','aria-label':'Close navigation'}});
-  const backButton=element('button',{className:'topbar-menu-control topbar-back-control',text:'← Back',attributes:{type:'button','aria-label':'Go back'}});
-  backButton.addEventListener('click',()=>{location.hash=routeHistory.back();});
+  const backButton=element('button',{className:'topbar-menu-control topbar-back-control',attributes:{type:'button','aria-label':'Go back',title:'Go back'}},[element('span',{className:'back-icon',attributes:{'aria-hidden':'true'}},[icon('back',20)]),element('span',{className:'back-label',text:'← Back'})]);
+  backButton.addEventListener('click',()=>routeHistory.back());
   const menuButton=element('button',{className:'topbar-menu-control mobile-menu',attributes:{type:'button','aria-label':'Open navigation','aria-controls':'app-sidebar','aria-expanded':'false'}},[element('span',{className:'menu-glyph',text:'☰',attributes:{'aria-hidden':'true'}}),element('span',{className:'topbar-control-label',text:'Menu'})]);
   const closeDrawer=()=>{sidebar.classList.remove('is-open');backdrop.classList.remove('is-open');menuButton.setAttribute('aria-expanded','false');};
   menuButton.addEventListener('click',()=>{const open=sidebar.classList.toggle('is-open');backdrop.classList.toggle('is-open',open);menuButton.setAttribute('aria-expanded',String(open));});backdrop.addEventListener('click',closeDrawer);
@@ -72,7 +72,8 @@ function renderShell(activeRoute) {
   const desktopCollapse=element('button',{className:'topbar-menu-control desktop-sidebar-toggle',attributes:{type:'button','aria-label':sidebarCollapsed?'Expand navigation':'Collapse navigation','aria-controls':'app-sidebar','aria-expanded':String(!sidebarCollapsed)}},[element('span',{className:'menu-glyph',text:'☰',attributes:{'aria-hidden':'true'}}),desktopLabel]);
   desktopCollapse.addEventListener('click',()=>{sidebarCollapsed=!sidebarCollapsed;shell.classList.toggle('sidebar-collapsed',sidebarCollapsed);desktopCollapse.setAttribute('aria-expanded',String(!sidebarCollapsed));desktopCollapse.setAttribute('aria-label',sidebarCollapsed?'Expand navigation':'Collapse navigation');desktopLabel.textContent=sidebarCollapsed?'Expand menu':'Collapse menu';});
   const title=element('div',{className:'topbar-title'},[element('strong',{text:'Store operations'}),element('small',{text:'Branch management workspace'})]);
-  const branchSelect=element('select',{className:'input branch-context',attributes:{'aria-label':'Current branch'}});
+  const branchSelect=element('select',{className:'input branch-context',attributes:{id:'current-branch','aria-label':'Current branch'}});
+  const branchSwitcher=element('div',{className:'branch-switcher'},[element('label',{className:'branch-switcher-label',text:'Branch',attributes:{for:'current-branch'}}),branchSelect]);
   const branches=getState().branches;
   if(branches.length===0){
     branchSelect.append(element('option',{text:'No accessible branches',attributes:{value:''}}));
@@ -82,8 +83,10 @@ function renderShell(activeRoute) {
     for(const branch of branches)branchSelect.append(element('option',{text:branchDisplayName(branch),attributes:{value:String(branch.branchId)}}));
   }
   branchSelect.value=getState().selectedBranchId??'';
-  branchSelect.addEventListener('change',()=>{rememberBranch(branchSelect.value||null);renderRoute();});
-  topbar.append(backButton,menuButton,desktopCollapse,title,branchSelect,accountMenu());const main=element('main',{className:'main-content',attributes:{id:'main-content'}});main.append(element('div',{attributes:{id:'page-content'}}));column.append(topbar,main);shell.append(sidebar,column,backdrop);root.replaceChildren(shell);return shell;
+  const selectedBranch=branches.find((branch)=>String(branch.branchId)===branchSelect.value);
+  branchSelect.setAttribute('title',selectedBranch?branchDisplayName(selectedBranch):'Select a branch');
+  branchSelect.addEventListener('change',()=>{const id=branchSelect.value;if(id&&!getState().branches.some((branch)=>String(branch.branchId)===id))return;rememberBranch(id||null);renderRoute();});
+  topbar.append(backButton,menuButton,desktopCollapse,title,branchSwitcher,accountMenu());const main=element('main',{className:'main-content',attributes:{id:'main-content'}});main.append(element('div',{attributes:{id:'page-content'}}));column.append(topbar,main);shell.append(sidebar,column,backdrop);root.replaceChildren(shell);return shell;
 }
 function accountMenu(){const wrap=element('div',{className:'account-menu'});const user=getState().session.user;const button=element('button',{className:'account-button',attributes:{type:'button','aria-haspopup':'menu','aria-expanded':'false'}},[element('span',{className:'avatar',text:(user.username?.[0]??'U').toUpperCase()}),element('span',{text:user.username})]);const menu=element('div',{className:'menu hidden',attributes:{role:'menu'}});menu.append(element('a',{text:'Profile',attributes:{href:'#/profile',role:'menuitem'}}));const signOut=element('button',{text:'Sign out',attributes:{type:'button',role:'menuitem'}});signOut.addEventListener('click',logout);menu.append(signOut);button.addEventListener('click',()=>{const open=menu.classList.toggle('hidden')===false;button.setAttribute('aria-expanded',String(open));});wrap.append(button,menu);return wrap;}
 function renderNotFound(container){document.title='Page not found · Supermarket Management System';container.replaceChildren(element('div',{className:'card state-panel'},[element('h1',{text:'Page not found'}),element('p',{className:'muted',text:'This frontend route does not exist.'}),element('a',{className:'button button-primary',text:'Return to dashboard',attributes:{href:'#/dashboard'}})]));}

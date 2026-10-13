@@ -14,6 +14,8 @@
 .topbar-menu-control:hover { background: var(--slate-50); }
 .mobile-menu { display: none; }
 .topbar-back-control { min-width: 5.5rem; justify-content: center; }
+.back-icon, .branch-switcher-label { display: none; }
+.branch-switcher { display: contents; }
 .topbar-title {
   flex: 1 1 15rem;
   display: grid;
@@ -168,10 +170,29 @@ thead th {
 .chart-shell-empty { min-height: 8rem; }
 
 @media (max-width: 800px) {
+  .topbar {
+    display: grid;
+    grid-template-columns: 2.75rem 2.75rem minmax(0, 1fr) 2.75rem;
+    height: auto;
+    gap: .5rem .65rem;
+    padding: .65rem 1rem;
+  }
   .topbar-menu-control { min-width: 2.7rem; justify-content: center; }
   .mobile-menu { display: inline-flex; }
+  .topbar .mobile-menu { grid-column: 1; grid-row: 1; }
   .desktop-sidebar-toggle { display: none; }
-  .topbar-back-control { display: none; }
+  .topbar-back-control { grid-column: 2; grid-row: 1; min-width: 0; width: 2.75rem; min-height: 2.75rem; padding: 0; }
+  .back-label { display: none; }
+  .back-icon { display: inline-flex; }
+  .topbar-title { grid-column: 3; grid-row: 1; min-width: 0; }
+  .topbar-title strong { font-size: .9rem; }
+  .topbar-title small { font-size: .7rem; }
+  .topbar .account-menu { grid-column: 4; grid-row: 1; margin-left: 0; }
+  .topbar .account-button { width: 2.75rem; min-height: 2.75rem; padding: 0; justify-content: center; }
+  .topbar .account-button > span:last-child { display: none; }
+  .branch-switcher { display: grid; grid-column: 1 / -1; min-width: 0; gap: .2rem; }
+  .branch-switcher-label { display: block; font-size: .75rem; font-weight: 700; color: var(--slate-600); }
+  .branch-switcher .branch-context { min-width: 0; max-width: 100%; width: 100%; min-height: 2.75rem; }
   .mobile-menu .topbar-control-label { display: none; }
   .row-action-menu-panel { position: static; margin-top: .25rem; box-shadow: none; }
   .sidebar-collapsed .sidebar { padding: 1.25rem 1rem; }
@@ -184,6 +205,7 @@ thead th {
 
 @media (max-width: 520px) {
   .topbar { gap: .55rem; }
+  .topbar-title { display: grid; }
   .account-button > span:last-child { display: none; }
   .cell-actions { flex-wrap: wrap; }
   .dashboard-filters { width: 100%; }

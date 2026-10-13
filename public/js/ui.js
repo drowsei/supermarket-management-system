@@ -1,6 +1,7 @@
 export function element(tag,{className,text,attributes,dataset}={},children=[]){ const node=document.createElement(tag); if(className)node.className=className; if(text!==undefined)node.textContent=String(text); for(const [name,value] of Object.entries(attributes??{})){if(value!==undefined&&value!==null)node.setAttribute(name,String(value));} for(const [name,value] of Object.entries(dataset??{}))node.dataset[name]=String(value); for(const child of Array.isArray(children)?children:[children]){if(child)node.append(child);} return node; }
 export function clear(node){ node.replaceChildren(); return node; }
 export const ICON_PATHS = Object.freeze({
+  back: ['M15 5l-7 7 7 7', 'M8 12h13'],
   dashboard: ['M4 4h6v6H4Z', 'M14 4h6v6h-6Z', 'M4 14h6v6H4Z', 'M14 14h6v6h-6Z'],
   home: ['M3 11.5 12 4l9 7.5', 'M5.5 10.5V20h13v-9.5', 'M9.5 20v-6h5v6'],
   menu: ['M4 7h16', 'M4 12h16', 'M4 17h16'],
