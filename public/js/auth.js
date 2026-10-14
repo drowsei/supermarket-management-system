@@ -18,6 +18,8 @@ export async function bootstrapAuthenticatedSession({
   if (freshLogin) clearBranch();
   const session=await initialize();
   if(!session)return null;
+  // Operational APIs are unavailable until a temporary password is replaced.
+  if(session.user?.mustChangePassword)return session;
   await loadBranches(freshLogin ? { session, storedBranchId: null } : { session });
   return session;
 }

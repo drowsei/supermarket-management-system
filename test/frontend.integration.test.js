@@ -1261,6 +1261,33 @@ test('branch-local delivery time conversion uses authoritative timezone metadata
   assert.equal(utc, '2026-10-01T09:30:00.000Z');
   assert.equal(utcToBranchLocalDateTime(utc, 'Africa/Lagos'), '2026-10-01T10:30');
 });
+test('mandatory password replacement defers operational branch loading', async () => {
+  const session = { user: { userId: '18446744073709551615', mustChangePassword: true } };
+  let cleared = false;
+  const result = await bootstrapAuthenticatedSession({
+    initialize: async () => session,
+    freshLogin: true,
+    clearBranch: () => { cleared = true; },
+    loadBranches: async () => assert.fail('Restricted session must not call operational APIs'),
+  });
+  assert.equal(result, session);
+  assert.equal(cleared, true);
+});
+
+test('password replacement bootstraps branch access before dashboard navigation', async () => {
+  const source = await read('public/js/pages/changePassword.js');
+  assert.match(source, /import \{ bootstrapAuthenticatedSession \} from '\.\.\/auth\.js'/);
+  const change = source.indexOf("await api.post('/api/auth/change-password'");
+  const bootstrap = source.indexOf('await bootstrapAuthenticatedSession()');
+  const redirect = source.indexOf("location.hash = '#/dashboard'");
+  assert.ok(change >= 0 && bootstrap > change && redirect > bootstrap);
+});
+
+test('dashboard chart contains its intrinsic width instead of expanding the mobile grid', async () => {
+  const css = await read('public/css/dashboard.css');
+  assert.match(css, /\.chart-shell\s*\{[^}]*min-width:\s*0;[^}]*overflow-x:\s*auto;/);
+});
+
 test('authenticated bootstrap waits for accessible branches before resolving', async () => {
   const events = [];
   let releaseBranches;

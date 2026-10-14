@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { initializeSession } from '../auth.js';
+import { bootstrapAuthenticatedSession } from '../auth.js';
 import { toast } from '../components/toast.js';
 import { setPasswordVisibility } from './login.js';
 import { element, pageHeader } from '../ui.js';
@@ -87,7 +87,7 @@ export function renderChangePassword(root) {
         newPassword: String(data.get('newPassword')),
       });
       form.reset();
-      await initializeSession();
+      await bootstrapAuthenticatedSession();
       toast('Password changed successfully.');
       location.hash = '#/dashboard';
     } catch (failure) {
