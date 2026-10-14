@@ -2886,6 +2886,10 @@ inserted data is ambiguous.
   is selected and must be restricted before production.
 - The login limiter uses process memory; multiple production instances require a
   shared store and correct trusted-proxy configuration.
+- Password changes are limited to 10 attempts per 15 minutes per authenticated
+  user, after authentication and before password verification. The budget is
+  independent of client IP and does not limit other business endpoints. This
+  limiter also uses process memory and needs a shared store for multiple instances.
 - Access tokens are stateless. There are no refresh tokens, revocation table,
   MFA, OAuth, or fake server-side logout in this phase.
 - The bootstrap is secure only in a real interactive TTY and intentionally has no
