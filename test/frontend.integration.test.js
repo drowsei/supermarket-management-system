@@ -8,7 +8,7 @@ import dotenv from 'dotenv';
 dotenv.config({ quiet: true });
 const { default: app } = await import('../src/app.js');
 import { ACCESS_CONTROL_PERMISSIONS } from '../src/config/accessControl.js';
-import { buildQuery } from '../public/js/api.js';
+import { api, buildQuery } from '../public/js/api.js';
 import {
   adjustmentConfig,
   branchConfig,
@@ -67,14 +67,15 @@ import { paginationModel } from '../public/js/components/pagination.js';
 import { currencyGroups, formatDecimalExact, quantitiesByUnit, textValue } from '../public/js/formatters.js';
 import { hasGlobalPermission, hasPermission, NAVIGATION, navigationFor } from '../public/js/permissions.js';
 import { createInAppRouteHistory, parseHash, ROUTES } from '../public/js/router.js';
-import { getState, isCurrentGeneration, nextRequestGeneration, resetState } from '../public/js/state.js';
+import { getState, isCurrentGeneration, nextRequestGeneration, resetState, setState } from '../public/js/state.js';
 import { isDecimalString, isUnsignedId, validateDateRange } from '../public/js/validation.js';
 import { REPORTS } from '../public/js/pages/reports.js';
 import { setPasswordVisibility } from '../public/js/pages/login.js';
-import { productWorkspaceSelector, variantWorkspaceSelector } from '../public/js/pages/products.js';
+import { productWorkspaceSelector, renderProducts, variantWorkspaceSelector } from '../public/js/pages/products.js';
 import { openTillSelector, saleWorkspaceSelector } from '../public/js/pages/sales.js';
 import { supplierProductWorkspaceSelector, supplierWorkspaceSelector } from '../public/js/pages/suppliers.js';
 import { ICON_PATHS } from '../public/js/ui.js';
+import { flushEvents, installDom } from '../test-support/frontendDom.js';
 import {
   DEFAULT_BRANCH_COUNTRY,
   DEFAULT_BRANCH_CURRENCY,
@@ -130,6 +131,22 @@ test('password checkbox reveals and hides without changing the entered value', (
   assert.equal(input.type, 'password');
   assert.equal(input.value, 'kept-only-in-the-form');
 });
+test('shared password visibility helper toggles both change-password values without modifying them', () => {
+  const current = { type: 'password', value: 'current-kept-only-in-the-form' };
+  const next = { type: 'password', value: 'new-kept-only-in-the-form' };
+
+  setPasswordVisibility([current, next], true);
+  assert.equal(current.type, 'text');
+  assert.equal(next.type, 'text');
+  assert.equal(current.value, 'current-kept-only-in-the-form');
+  assert.equal(next.value, 'new-kept-only-in-the-form');
+
+  setPasswordVisibility([current, next], false);
+  assert.equal(current.type, 'password');
+  assert.equal(next.type, 'password');
+  assert.equal(current.value, 'current-kept-only-in-the-form');
+  assert.equal(next.value, 'new-kept-only-in-the-form');
+});
 test('login password stays out of browser storage and uses no inline handlers', async () => {
   const source = await read('public/js/pages/login.js');
   assert.doesNotMatch(source, /localStorage|\.setItem\s*\(/);
@@ -155,6 +172,37 @@ test('login action row has deliberate spacing and responsive wrapping', async ()
   assert.match(css, /\.login-actions \{[\s\S]*?align-items: center;[\s\S]*?gap: 1rem;[\s\S]*?margin-top: 1\.5rem;[\s\S]*?flex-wrap: wrap;/);
   assert.match(css, /\.login-password-toggle \{ min-height: 2\.65rem; \}/);
   assert.match(css, /@media \(max-width: 520px\)[\s\S]*?\.login-actions \.button \{ width: 100%; margin-left: 0; \}/);
+});
+test('change-password page uses the shared responsive auth design with a focused form card', async () => {
+  const source = await read('public/js/pages/changePassword.js');
+  const css = await read('public/css/ux.css');
+
+  assert.match(source, /className: 'auth-page auth-page-change-password'/);
+  assert.match(source, /className: 'auth-story change-password-story'/);
+  assert.match(source, /className: 'auth-card change-password-card'/);
+  assert.match(source, /className: 'change-password-form'/);
+  assert.match(css, /\.auth-page-change-password \{[\s\S]*?42%[\s\S]*?58%/);
+  assert.match(css, /\.change-password-card \{[\s\S]*?width: min\(100%, 28rem\);[\s\S]*?border-radius: 1\.1rem;[\s\S]*?box-shadow: var\(--shadow-md\);/);
+  assert.match(css, /\.change-password-form \.button \{[\s\S]*?width: 100%;[\s\S]*?min-height: 3rem;[\s\S]*?margin-top: 1\.75rem;/);
+  assert.match(css, /@media \(max-width: 800px\)[\s\S]*?\.auth-page-change-password \{ grid-template-columns: 1fr; \}/);
+  assert.match(css, /@media \(max-width: 520px\)[\s\S]*?\.change-password-panel/);
+});
+test('change-password fields preserve password semantics and existing API behavior', async () => {
+  const source = await read('public/js/pages/changePassword.js');
+
+  assert.match(source, /type: 'password'/);
+  assert.match(source, /'current-password'/);
+  assert.match(source, /'new-password'/);
+  assert.match(source, /'aria-describedby': 'change-password-error'/);
+  assert.match(source, /api\.post\('\/api\/auth\/change-password'/);
+  assert.match(source, /attributes: \{ id: 'show-change-passwords', type: 'checkbox' \}/);
+  assert.match(source, /text: 'Show passwords'/);
+  assert.match(source, /attributes: \{ for: 'show-change-passwords' \}/);
+  assert.match(source, /visibility\.addEventListener\('change'/);
+  assert.match(source, /setPasswordVisibility\(\[currentInput, nextInput\], visibility\.checked\)/);
+  assert.match(source, /currentPassword: String\(data\.get\('currentPassword'\)\),\s*newPassword: String\(data\.get\('newPassword'\)\),/);
+  assert.doesNotMatch(source, /localStorage|sessionStorage|\.setItem\s*\(/);
+  assert.doesNotMatch(source, /\bon(?:click|change|input|submit)\s*:/i);
 });
 test('app shell supports desktop collapse and a mobile drawer',async()=>{const appSource=await read('public/js/app.js');const layout=await read('public/css/layout.css');const responsive=await read('public/css/responsive.css');assert.match(appSource,/desktop-sidebar-toggle/);assert.match(appSource,/sidebar-collapsed/);assert.match(layout,/app-shell.sidebar-collapsed/);assert.match(responsive,/desktop-sidebar-toggle/);});
 test('permission helper honors global, exact branch, missing, and unrelated grants',()=>{const auth={permissions:{global:['products.read'],byBranch:{'9007199254740993':['inventory.read'],'9007199254740995':['reports.read']}}};assert.equal(hasPermission(auth,'products.read','18446744073709551615'),true);assert.equal(hasPermission(auth,'inventory.read','9007199254740993'),true);assert.equal(hasPermission(auth,'inventory.read','9007199254740995'),false);assert.equal(hasPermission(auth,'sales.read','9007199254740993'),false);assert.equal(hasGlobalPermission(auth,'products.read'),true);});
@@ -995,6 +1043,87 @@ test('product workspaces use readable product and variant selectors with exact I
   assert.doesNotMatch(source, /contextGate|label:\s*'Product ID'|label:\s*'Variant ID'/);
   assert.doesNotMatch(source, /(?:Number|parseInt|parseFloat)\([^\n]*(?:productId|variantId)/);
 });
+
+test('product workspace tabs remain available inside every parent-selection gate', async () => {
+  const componentsCss = await read('public/css/components.css');
+  const responsiveCss = await read('public/css/responsive.css');
+  assert.match(componentsCss, /\.tabs\{[\s\S]*?overflow-x:auto/);
+  assert.match(componentsCss, /\.tab\{[\s\S]*?white-space:nowrap/);
+  assert.match(responsiveCss, /@media\(max-width:520px\)[\s\S]*?\.tabs\{/);
+
+  const dom = installDom();
+  const root = document.createElement('main');
+  dom.body.append(root);
+  const previousLocation = Object.getOwnPropertyDescriptor(globalThis, 'location');
+  const savedGet = api.get;
+  const location = { hash: '' };
+  Object.defineProperty(globalThis, 'location', { configurable: true, value: location });
+  api.get = async () => ({ data: { items: [], pagination: { page: 1, totalPages: 1 } } });
+  setState({
+    session: {
+      authorization: {
+        permissions: { global: ['products.read', 'products.manage'], byBranch: {} },
+      },
+    },
+  });
+
+  const productId = '18446744073709551615';
+  const cases = [
+    { tab: 'variants', selector: 'productId' },
+    { tab: 'packages', selector: 'productId' },
+    { tab: 'packages', productId, selector: 'variantId' },
+    { tab: 'barcodes', selector: 'productId' },
+    { tab: 'barcodes', productId, selector: 'variantId' },
+  ];
+
+  try {
+    await renderProducts(root, { query: { tab: 'products' } });
+    assert.deepEqual(productTabLabels(root), ['Products', 'Variants', 'Packages', 'Barcodes']);
+
+    for (const query of cases) {
+      await renderProducts(root, { query });
+      await flushEvents();
+      assert.deepEqual(productTabLabels(root), ['Products', 'Variants', 'Packages', 'Barcodes']);
+      assert.ok(root.querySelector('.selection-gate'));
+      assert.equal(root.querySelector('select').attributes.name, query.selector);
+    }
+
+    await renderProducts(root, { query: { tab: 'variants' } });
+    await tabNamed(root, 'Products').trigger('click');
+    assert.equal(location.hash, '#/products?tab=products');
+
+    await renderProducts(root, { query: { tab: 'packages', productId } });
+    await tabNamed(root, 'Barcodes').trigger('click');
+    assert.equal(location.hash, `#/products?tab=barcodes&productId=${productId}`);
+
+    const variantId = '18446744073709551614';
+    await renderProducts(root, { query: { tab: 'barcodes', productId, variantId } });
+    await tabNamed(root, 'Variants').trigger('click');
+    assert.equal(
+      location.hash,
+      `#/products?tab=variants&productId=${productId}&variantId=${variantId}`,
+    );
+    assert.equal(typeof productId, 'string');
+    assert.equal(typeof variantId, 'string');
+  } finally {
+    api.get = savedGet;
+    resetState();
+    if (previousLocation) Object.defineProperty(globalThis, 'location', previousLocation);
+    else delete globalThis.location;
+    dom.restore();
+  }
+});
+
+function productTabLabels(root) {
+  return root.querySelectorAll('button')
+    .filter((button) => button.attributes.role === 'tab')
+    .map((button) => button.textContent);
+}
+
+function tabNamed(root, label) {
+  return root.querySelectorAll('button')
+    .find((button) => button.attributes.role === 'tab' && button.textContent === label);
+}
 
 test('resource actions follow their exact backend permission and lifecycle contracts', () => {
   const branchId = '18446744073709551615';

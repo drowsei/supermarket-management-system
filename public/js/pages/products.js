@@ -26,30 +26,53 @@ export function variantWorkspaceSelector(productId) {
 export function renderProducts(root, context) {
   const tab = context.query.tab ?? 'products';
   const { productId, variantId } = context.query;
-  if (tab === 'variants' && !productId) {
-    selectionGate(root, {
-      title: 'Product variants',
-      message: 'Choose a product to review or maintain its sellable variants.',
+  const tabs = [
+    { id: 'products', label: 'Products', render: (pane) => renderResourcePage(pane, productConfig, context) },
+    {
+      id: 'variants',
+      label: 'Variants',
+      render: (pane) => productId
+        ? renderResourcePage(pane, variantConfig, { productId })
+        : selectionGate(pane, {
+          title: 'Product variants',
+          message: 'Choose a product to review or maintain its sellable variants.',
+          selector: productWorkspaceSelector(),
+          route: 'products',
+          query: { tab: 'variants' },
+          submitLabel: 'Open variants',
+        }),
+    },
+    {
+      id: 'packages',
+      label: 'Packages',
+      render: (pane) => renderVariantConfiguration(pane, {
+        tab: 'packages', productId, variantId, config: packageConfig,
+      }),
+    },
+    {
+      id: 'barcodes',
+      label: 'Barcodes',
+      render: (pane) => renderVariantConfiguration(pane, {
+        tab: 'barcodes', productId, variantId, config: barcodeConfig,
+      }),
+    },
+  ];
+  return renderWorkspace(root, { tabs, active: tab, context: { ...context, route: 'products' } });
+}
+
+function renderVariantConfiguration(pane, { tab, productId, variantId, config }) {
+  if (!productId) {
+    return selectionGate(pane, {
+      title: 'Variant configuration',
+      message: 'Choose a product before selecting the variant to configure.',
       selector: productWorkspaceSelector(),
       route: 'products',
-      query: { tab: 'variants' },
-      submitLabel: 'Open variants',
+      query: { tab },
+      submitLabel: 'Choose product',
     });
-    return;
   }
-  if (['packages', 'barcodes'].includes(tab) && !variantId) {
-    if (!productId) {
-      selectionGate(root, {
-        title: 'Variant configuration',
-        message: 'Choose a product before selecting the variant to configure.',
-        selector: productWorkspaceSelector(),
-        route: 'products',
-        query: { tab },
-        submitLabel: 'Choose product',
-      });
-      return;
-    }
-    selectionGate(root, {
+  if (!variantId) {
+    return selectionGate(pane, {
       title: tab === 'packages' ? 'Variant packages' : 'Variant barcodes',
       message: `Choose a product variant to manage its ${tab}.`,
       selector: variantWorkspaceSelector(productId),
@@ -57,13 +80,6 @@ export function renderProducts(root, context) {
       query: { tab, productId: String(productId) },
       submitLabel: tab === 'packages' ? 'Open packages' : 'Open barcodes',
     });
-    return;
   }
-  const tabs = [
-    { id: 'products', label: 'Products', render: (pane) => renderResourcePage(pane, productConfig, context) },
-    { id: 'variants', label: 'Variants', render: (pane) => renderResourcePage(pane, variantConfig, { productId }) },
-    { id: 'packages', label: 'Packages', render: (pane) => renderResourcePage(pane, packageConfig, { variantId }) },
-    { id: 'barcodes', label: 'Barcodes', render: (pane) => renderResourcePage(pane, barcodeConfig, { variantId }) },
-  ];
-  return renderWorkspace(root, { tabs, active: tab, context: { ...context, route: 'products' } });
+  return renderResourcePage(pane, config, { variantId });
 }
