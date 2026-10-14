@@ -52,6 +52,62 @@
   cursor: pointer;
 }
 .login-actions .button { min-width: 7.5rem; margin-left: auto; }
+.auth-page-change-password {
+  grid-template-columns: minmax(20rem, 42%) minmax(0, 58%);
+  background: var(--slate-50);
+}
+.change-password-story {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  padding: clamp(2rem, 5vw, 4.5rem);
+}
+.change-password-story > * { position: relative; z-index: 1; }
+.change-password-story-copy {
+  align-self: center;
+  padding-block: 3rem;
+}
+.change-password-story-copy h1 {
+  margin-bottom: 1rem;
+  font-size: clamp(2.5rem, 4.5vw, 4rem);
+}
+.change-password-story-copy p {
+  margin: 0;
+  max-width: 30rem;
+}
+.change-password-panel { padding: clamp(2rem, 5vw, 4.5rem); }
+.change-password-card {
+  width: min(100%, 28rem);
+  padding: clamp(1.75rem, 3vw, 2.25rem);
+  border: 1px solid var(--slate-200);
+  border-radius: 1.1rem;
+  background: var(--white);
+  box-shadow: var(--shadow-md);
+}
+.change-password-card .page-header {
+  display: block;
+  margin-bottom: 1.75rem;
+}
+.change-password-card .page-header h1 { margin-bottom: .55rem; }
+.change-password-card .page-header p { margin: 0; }
+.change-password-form { display: grid; }
+.change-password-form .form-error { margin-bottom: 1.25rem; }
+.change-password-form .field + .field { margin-top: 1.15rem; }
+.change-password-form .field input { min-height: 3rem; }
+.change-password-toggle {
+  width: fit-content;
+  min-height: 2.65rem;
+  margin-top: 1rem;
+  color: var(--slate-700);
+  font-size: .9rem;
+  font-weight: 700;
+}
+.change-password-toggle input,
+.change-password-toggle label { cursor: pointer; }
+.change-password-form .button {
+  width: 100%;
+  min-height: 3rem;
+  margin-top: 1.75rem;
+}
 .dialog-close {
   width: 2rem;
   height: 2rem;
@@ -170,6 +226,21 @@ thead th {
 .chart-shell-empty { min-height: 8rem; }
 
 @media (max-width: 800px) {
+  .auth-page-change-password { grid-template-columns: 1fr; }
+  .change-password-story {
+    min-height: auto;
+    grid-template-rows: auto auto;
+    gap: 1.5rem;
+    padding: 1.75rem clamp(1.25rem, 5vw, 2rem);
+  }
+  .change-password-story-copy { padding: 0; }
+  .change-password-story-copy h1 {
+    max-width: none;
+    margin-bottom: .5rem;
+    font-size: clamp(1.75rem, 6vw, 2.25rem);
+  }
+  .change-password-story-copy p { font-size: .95rem; }
+  .change-password-panel { padding: 2rem clamp(1.25rem, 5vw, 2rem); }
   .topbar {
     display: grid;
     grid-template-columns: 2.75rem 2.75rem minmax(0, 1fr) 2.75rem;
@@ -204,6 +275,17 @@ thead th {
 }
 
 @media (max-width: 520px) {
+  .change-password-story { gap: 1rem; padding-block: 1.25rem; }
+  .change-password-story p { display: block; }
+  .change-password-panel {
+    align-items: start;
+    padding-block: 1.25rem 2rem;
+  }
+  .change-password-card {
+    padding: 1.35rem;
+    border-radius: var(--radius-lg);
+  }
+  .change-password-card .page-header { margin-bottom: 1.5rem; }
   .topbar { gap: .55rem; }
   .topbar-title { display: grid; }
   .account-button > span:last-child { display: none; }

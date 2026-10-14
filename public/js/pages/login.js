@@ -84,8 +84,9 @@ export function renderLogin(root, { message = '' } = {}) {
   root.replaceChildren(page);
 }
 
-export function setPasswordVisibility(input, visible) {
-  input.type = visible ? 'text' : 'password';
+export function setPasswordVisibility(inputOrInputs, visible) {
+  const inputs = Array.isArray(inputOrInputs) ? inputOrInputs : [inputOrInputs];
+  for (const input of inputs) input.type = visible ? 'text' : 'password';
 }
 
 function field(id, label, type, autocomplete) {
